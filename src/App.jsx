@@ -904,21 +904,16 @@ function App() {
         ) : (
           <div className="dashboard-grid">
             {/* KPI Overview */}
-            {/* Section 1: Khách Hàng Mới */}
-            <div className="secondary-chart glass-panel kpi-card" style={{border: '1px solid rgba(139, 92, 246, 0.2)', display: 'flex', flexDirection: 'column'}}>
-              <div className="kpi-header" style={{marginBottom: 'auto'}}>
-                <span>Khách Hàng Mới</span>
-                <div style={{padding: '6px', borderRadius: '8px', background: 'rgba(139, 92, 246, 0.1)'}}>
-                   <UserPlus size={18} color="#8b5cf6" />
-                </div>
-              </div>
-              <div className="kpi-value" style={{fontSize: '64px', margin: 'auto 0', alignSelf: 'center'}}>{newCustomersToday}</div>
-              <div className="kpi-trend trend-up" style={{marginTop: 'auto', justifyContent: 'center', fontSize: '16px'}}><Users size={16}/> trong ngày hôm nay</div>
-            </div>
-
+            {/* Section 1: Khách Hàng Mới Area */}
             <div className="chart-container glass-panel" style={{marginBottom: '24px'}}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                  <h3 className="chart-title" style={{ margin: 0, color: '#8b5cf6' }}>Biểu Đồ Khách Hàng Mới</h3>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
+                    <h3 style={{ margin: 0, color: '#8b5cf6', fontSize: '18px', fontWeight: 'bold' }}>Khách Hàng Mới</h3>
+                    <span style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newCustomersToday}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '14px', fontWeight: '500' }}>
+                      <Users size={16}/> trong ngày hôm nay
+                    </span>
+                  </div>
                   <div className="glass-panel" style={{ padding: '4px 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input type="date" value={ncStartDate} onChange={e=>setNcStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
                     <span style={{color: 'var(--text-secondary)'}}>-</span>
@@ -938,28 +933,21 @@ function App() {
               </ResponsiveContainer>
             </div>
 
-            {/* Section 2: Khách Chốt Đơn Đầu */}
-            <div className="secondary-chart glass-panel kpi-card" style={{border: '1px solid rgba(245, 158, 11, 0.2)', display: 'flex', flexDirection: 'column'}}>
-              <div className="kpi-header" style={{marginBottom: 'auto'}}>
-                <span>Khách Chốt Đơn Đầu</span>
-                <div style={{padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)'}}>
-                   <ShoppingCart size={18} color="#f59e0b" />
-                </div>
-              </div>
-              <div className="kpi-value" style={{fontSize: '64px', margin: 'auto 0', alignSelf: 'center'}}>{newBuyersToday}</div>
-              <div className="kpi-trend trend-up" style={{flexDirection: 'column', alignItems: 'center', marginTop: 'auto', gap: '8px'}}>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '4px', fontSize: '16px'}}><Users size={16}/> có đơn đầu hôm nay</div>
-                  {newBuyersOrderIds.length > 0 && (
-                     <div style={{fontSize: '12px', color: 'var(--text-secondary)', wordBreak: 'break-all', textAlign: 'center'}}>
-                       Mã ĐH: {newBuyersOrderIds.slice(0,3).join(', ')}{newBuyersOrderIds.length > 3 ? '...' : ''}
-                     </div>
-                  )}
-              </div>
-            </div>
-
+            {/* Section 2: Khách Chốt Đơn Đầu Area */}
             <div className="chart-container glass-panel" style={{marginBottom: '24px'}}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                  <h3 className="chart-title" style={{ margin: 0, color: '#f59e0b' }}>Biểu Đồ Khách Có Đơn Mới</h3>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
+                    <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '18px', fontWeight: 'bold' }}>Khách Có Đơn Mới</h3>
+                    <span style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newBuyersToday}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '14px', fontWeight: '500' }}>
+                      <Users size={16}/> có đơn đầu hôm nay
+                    </span>
+                    {newBuyersOrderIds.length > 0 && (
+                       <span style={{fontSize: '13px', color: 'var(--text-secondary)', marginLeft: '8px'}}>
+                         (Mã ĐH: {newBuyersOrderIds.slice(0,3).join(', ')}{newBuyersOrderIds.length > 3 ? '...' : ''})
+                       </span>
+                    )}
+                  </div>
                   <div className="glass-panel" style={{ padding: '4px 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input type="date" value={nbStartDate} onChange={e=>setNbStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
                     <span style={{color: 'var(--text-secondary)'}}>-</span>
