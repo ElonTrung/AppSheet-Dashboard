@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, ShoppingCart, Users, Settings, Bell, 
   DollarSign, TrendingUp, Package, Activity, FileText, FileDown, FileCheck, UserPlus, Filter
@@ -9,6 +9,41 @@ import {
 } from 'recharts';
 import { fetchAppSheetData } from './services/appsheet';
 import { getMisaAccessToken, fetchMisaPurchaseData } from './services/misa';
+
+const getSum = (arr) => arr.reduce((acc, curr) => {
+  const val = curr['Tong_tien_da_ co_VAT'] || curr.Tong_tien_da_co_VAT || curr.Tong_tien_mua_hang_co_VAT || curr.total || curr.Total || curr['Tổng tiền'] || curr['Thành tiền'] || curr.Price || 0;
+  return acc + Number(val);
+}, 0);
+
+const parseAppSheetDate = (dateStr) => {
+  if (!dateStr) return null;
+  let cleanStr = String(dateStr).split(' ')[0];
+  if (cleanStr.includes('/')) {
+     const parts = cleanStr.split('/');
+     if (parts.length === 3) {
+        let p1 = Number(parts[0]);
+        let p2 = Number(parts[1]);
+        let year = parts[2];
+        let month = p1;
+        let day = p2;
+        if (p1 > 12) { month = p2; day = p1; }
+        return new Date(`${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}T00:00:00`);
+     }
+  }
+  return new Date(cleanStr);
+};
+
+const isDateToday = (dateStr) => {
+   if (!dateStr) return false;
+   const d = parseAppSheetDate(dateStr);
+   if (!d || isNaN(d)) return false;
+   const today = new Date();
+   return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+};
+
+const getCustomerName = (row) => row.Ten_khach_hang || row.Ten_NCC || row.khachhang || row.Khachhang || row['Khách hàng'] || row.supplier || row['Nhà cung cấp'] || row.Supplier || "Unknown";
+const getRowDateStr = (row) => row.Ngay_bao_gia || row.Ngay_ban_hang || row.Ngay_mua_hang || row.date || row.Date || row['Ngày tạo'] || row['Ngày'];
+const getSaleValue = (row) => Number(row['Tong_tien_da_ co_VAT'] || row.Tong_tien_da_co_VAT || row.Tong_tien_mua_hang_co_VAT || row.total || row.Total || row['Tổng tiền'] || row['Thành tiền'] || row.Price || 0);
 
 function App() {
   const [dataBG, setDataBG] = useState([]);
@@ -26,7 +61,7 @@ function App() {
 
   const getLastWeekString = () => {
      const d = new Date();
-     d.setDate(d.getDate() - 6); // 1 tuần lùi lại bao gồm ngày hiện tại: 7 ngày
+     d.setDate(d.getDate() - 6);
      const m = String(d.getMonth() + 1).padStart(2, '0');
      const day = String(d.getDate()).padStart(2, '0');
      return `${d.getFullYear()}-${m}-${day}`;
@@ -36,15 +71,24 @@ function App() {
   const [endDate, setEndDate] = useState(getTodayString());
   const [ncStartDate, setNcStartDate] = useState(getTodayString());
   const [ncEndDate, setNcEndDate] = useState(getTodayString());
+  const [nbStartDate, setNbStartDate] = useState(getTodayString());
+  const [nbEndDate, setNbEndDate] = useState(getTodayString());
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [dataCTDH, setDataCTDH] = useState([]);
   const [dataDGC, setDataDGC] = useState([]);
   const [dataVC, setDataVC] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
 
+  const [profitPage, setProfitPage] = useState(1);
+  const [misaPage, setMisaPage] = useState(1);
+  const itemsPerPage = 50;
+
+  useEffect(() => { setProfitPage(1); }, [startDate, endDate]);
+
   const [misaPurchaseData, setMisaPurchaseData] = useState([]);
   const [loadingMisaPurchase, setLoadingMisaPurchase] = useState(false);
   const [misaError, setMisaError] = useState(null);
+
   useEffect(() => {
     const loadAllData = async () => {
       setLoading(true);
@@ -86,232 +130,542 @@ function App() {
       };
       loadMisaData();
     }
-  }, [activeTab]);
+  }, [activeTab, misaPurchaseData.length]);
 
-  const getSum = (arr) => arr.reduce((acc, curr) => {
-    const val = curr['Tong_tien_da_ co_VAT'] || curr.Tong_tien_da_co_VAT || curr.Tong_tien_mua_hang_co_VAT || curr.total || curr.Total || curr['Tổng tiền'] || curr['Thành tiền'] || curr.Price || 0;
-    return acc + Number(val);
-  }, 0);
+  const { filteredBG, filteredDH, filteredMH, totalBG, totalDH, totalMH } = useMemo(() => {
+     const filterByDate = (arr) => {
+        if (!startDate && !endDate) return arr;
+        const start = startDate ? new Date(startDate).setHours(0,0,0,0) : 0;
+        const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
+        return arr.filter(row => {
+           const d = parseAppSheetDate(getRowDateStr(row));
+           if(!d || isNaN(d.getTime())) return false;
+           return d.getTime() >= start && d.getTime() <= end;
+        });
+     };
+     const fBG = filterByDate(dataBG);
+     const fDH = filterByDate(dataDH);
+     const fMH = filterByDate(dataMH);
 
-  const parseAppSheetDate = (dateStr) => {
-    if (!dateStr) return null;
-    let cleanStr = String(dateStr).split(' ')[0];
-    if (cleanStr.includes('/')) {
-       const parts = cleanStr.split('/');
-       if (parts.length === 3) {
-          let p1 = Number(parts[0]);
-          let p2 = Number(parts[1]);
-          let year = parts[2];
-          let month = p1;
-          let day = p2;
-          if (p1 > 12) {
-             month = p2;
-             day = p1;
+     return {
+        filteredBG: fBG, filteredDH: fDH, filteredMH: fMH,
+        totalBG: getSum(fBG), totalDH: getSum(fDH), totalMH: getSum(fMH)
+     };
+  }, [dataBG, dataDH, dataMH, startDate, endDate]);
+
+  const { comparisonChartData, comparisonName, compareMode, sumCurrentDH, sumPreviousDH } = useMemo(() => {
+      const mergeDate = (arr, outputMap, key) => {
+        arr.forEach(curr => {
+          const dateStr = getRowDateStr(curr);
+          const date = dateStr ? parseAppSheetDate(dateStr) : null;
+          const kDate = (date && !isNaN(date)) ? `${String(date.getMonth() + 1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')}/${date.getFullYear()}` : "Unknown";
+          const val = getSaleValue(curr);
+          if (!outputMap[kDate]) outputMap[kDate] = { name: kDate, dh: 0, mh: 0 };
+          outputMap[kDate][key] += Number(val);
+        });
+      };
+
+      const chartMap = {};
+      mergeDate(filteredDH, chartMap, 'dh');
+      mergeDate(filteredMH, chartMap, 'mh');
+      
+      const cData = Object.values(chartMap).sort((a,b) => {
+         const da = parseAppSheetDate(a.name);
+         const db = parseAppSheetDate(b.name);
+         if (da && db && !isNaN(da) && !isNaN(db)) return da.getTime() - db.getTime();
+         return a.name.localeCompare(b.name);
+      });
+
+      const allDHMap = {};
+      dataDH.forEach(curr => {
+          const val = getSaleValue(curr);
+          const d = parseAppSheetDate(getRowDateStr(curr));
+          if (d && !isNaN(d)) {
+             const dKey = d.toISOString().split('T')[0];
+             if (!allDHMap[dKey]) allDHMap[dKey] = 0;
+             allDHMap[dKey] += Number(val);
           }
-          return new Date(`${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}T00:00:00`);
-       }
-    }
-    return new Date(cleanStr);
-  };
+      });
 
-  const filterByDate = (arr) => {
-     if (!startDate && !endDate) return arr;
+       let cMode = 'month'; 
+       let cName = "Cùng Kỳ Tháng Trước";
+
+       if (startDate && endDate) {
+           const start = new Date(startDate);
+           const end = new Date(endDate);
+           const diffTime = Math.abs(end - start);
+           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+           if (diffDays <= 14) {
+               cMode = 'week';
+               cName = "Cùng Kỳ Tuần Trước";
+           }
+       } else if (startDate && !endDate) {
+           const start = new Date(startDate);
+           const today = new Date();
+           const diffTime = Math.abs(today - start);
+           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+           if (diffDays <= 14) {
+               cMode = 'week';
+               cName = "Cùng Kỳ Tuần Trước";
+           }
+       }
+
+      const compChartData = cData.map(item => {
+         let previousDH = 0;
+         let previousName = "";
+         const d = parseAppSheetDate(item.name);
+         if (d && !isNaN(d)) {
+            const prevDate = new Date(d);
+            if (cMode === 'week') {
+                prevDate.setDate(prevDate.getDate() - 7);
+            } else {
+                prevDate.setMonth(prevDate.getMonth() - 1);
+            }
+            const pKey = prevDate.toISOString().split('T')[0];
+            previousDH = allDHMap[pKey] || 0;
+            const pd_m = String(prevDate.getMonth() + 1).padStart(2, '0');
+            const pd_d = String(prevDate.getDate()).padStart(2, '0');
+            previousName = `${pd_m}/${pd_d}/${prevDate.getFullYear()}`;
+         }
+         return { ...item, previousDH, previousName };
+      });
+
+      const sCurrDH = compChartData.reduce((acc, item) => acc + (item.dh || 0), 0);
+      const sPrevDH = compChartData.reduce((acc, item) => acc + (item.previousDH || 0), 0);
+
+      return {
+         comparisonChartData: compChartData,
+         comparisonName: cName,
+         compareMode: cMode,
+         sumCurrentDH: sCurrDH,
+         sumPreviousDH: sPrevDH
+      };
+  }, [filteredDH, filteredMH, dataDH, startDate, endDate]);
+
+  const legendCurrentDH = `Doanh Thu Hiện Tại (${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(sumCurrentDH)})`;
+  const legendPreviousDH = `${comparisonName} (${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(sumPreviousDH)})`;
+
+  const { ncComparisonChartData, ncComparisonName, ncCompareMode } = useMemo(() => {
+      const allNewCustomers = dataBG.filter(row => {
+        const soBaoGia = String(row.So_bao_gia || row.id || row.ID || "");
+        return (soBaoGia.startsWith("001/") || soBaoGia.startsWith("001-"));
+      });
+
+      const allNCMap = {};
+      allNewCustomers.forEach(curr => {
+          const d = parseAppSheetDate(getRowDateStr(curr));
+          if (d && !isNaN(d)) {
+             const dKey = d.toISOString().split('T')[0];
+             if (!allNCMap[dKey]) allNCMap[dKey] = 0;
+             allNCMap[dKey] += 1;
+          }
+      });
+
+      const filteredNewCustomers = allNewCustomers.filter(row => {
+        const d = parseAppSheetDate(getRowDateStr(row));
+        if (!d || isNaN(d)) return false;
+        const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const start = ncStartDate ? new Date(ncStartDate) : null;
+        const end = ncEndDate ? new Date(ncEndDate) : null;
+        if (start) start.setHours(0,0,0,0);
+        if (end) end.setHours(23,59,59,999);
+        if (start && end) return itemDate >= start && itemDate <= end;
+        if (start) return itemDate >= start;
+        if (end) return itemDate <= end;
+        return true;
+      });
+
+      const ncChartMap = {};
+      filteredNewCustomers.forEach(curr => {
+          const d = parseAppSheetDate(getRowDateStr(curr));
+          if (d && !isNaN(d)) {
+             const dstr = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/' + d.getFullYear();
+             if (!ncChartMap[dstr]) ncChartMap[dstr] = { name: dstr, nc: 0 };
+             ncChartMap[dstr].nc += 1;
+          }
+      });
+      
+      const ncChartData = Object.values(ncChartMap).sort((a,b) => {
+         const da = parseAppSheetDate(a.name);
+         const db = parseAppSheetDate(b.name);
+         if (da && db && !isNaN(da) && !isNaN(db)) return da.getTime() - db.getTime();
+         return a.name.localeCompare(b.name);
+      });
+
+      let ncCMode = 'month';
+      let ncCName = "Cùng Kỳ Tháng Trước";
+      if (ncStartDate && ncEndDate) {
+          const start = new Date(ncStartDate);
+          const end = new Date(ncEndDate);
+          const diffTime = Math.abs(end - start);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+          if (diffDays <= 14) {
+              ncCMode = 'week';
+              ncCName = "Cùng Kỳ Tuần Trước";
+          }
+      } else if (ncStartDate && !ncEndDate) {
+          const start = new Date(ncStartDate);
+          const today = new Date();
+          const diffTime = Math.abs(today - start);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+          if (diffDays <= 14) {
+              ncCMode = 'week';
+              ncCName = "Cùng Kỳ Tuần Trước";
+          }
+      }
+
+      const ncCompChartData = ncChartData.map(item => {
+         let previousNC = 0;
+         let previousName = "";
+         const d = parseAppSheetDate(item.name);
+         if (d && !isNaN(d)) {
+            const prevDate = new Date(d);
+            if (ncCMode === 'week') {
+                prevDate.setDate(prevDate.getDate() - 7);
+            } else {
+                prevDate.setMonth(prevDate.getMonth() - 1);
+            }
+            const pKey = prevDate.toISOString().split('T')[0];
+            previousNC = allNCMap[pKey] || 0;
+            const pd_m = String(prevDate.getMonth() + 1).padStart(2, '0');
+            const pd_d = String(prevDate.getDate()).padStart(2, '0');
+            previousName = `${pd_m}/${pd_d}/${prevDate.getFullYear()}`;
+         }
+         return { ...item, previousNC, previousName };
+      });
+
+      return {
+         ncComparisonChartData: ncCompChartData,
+         ncComparisonName: ncCName,
+         ncCompareMode: ncCMode
+      };
+  }, [dataBG, ncStartDate, ncEndDate]);
+
+  const { nbComparisonChartData, nbComparisonName, nbCompareMode } = useMemo(() => {
+      const customerFirstOrderMap = {};
+      dataDH.forEach(row => {
+         const name = String(getCustomerName(row)).trim();
+         const d = parseAppSheetDate(getRowDateStr(row));
+         if (d && !isNaN(d)) {
+            if (!customerFirstOrderMap[name] || d < customerFirstOrderMap[name].date) {
+               customerFirstOrderMap[name] = { date: d };
+            }
+         }
+      });
+
+      const allNBMap = {};
+      Object.values(customerFirstOrderMap).forEach(info => {
+         const dKey = info.date.toISOString().split('T')[0];
+         if (!allNBMap[dKey]) allNBMap[dKey] = 0;
+         allNBMap[dKey] += 1;
+      });
+
+      const filteredNewBuyers = Object.values(customerFirstOrderMap).filter(info => {
+        const itemDate = new Date(info.date.getFullYear(), info.date.getMonth(), info.date.getDate());
+        const start = nbStartDate ? new Date(nbStartDate) : null;
+        const end = nbEndDate ? new Date(nbEndDate) : null;
+        if (start) start.setHours(0,0,0,0);
+        if (end) end.setHours(23,59,59,999);
+        if (start && end) return itemDate >= start && itemDate <= end;
+        if (start) return itemDate >= start;
+        if (end) return itemDate <= end;
+        return true;
+      });
+
+      const nbChartMap = {};
+      filteredNewBuyers.forEach(info => {
+          const dstr = String(info.date.getMonth() + 1).padStart(2, '0') + '/' + String(info.date.getDate()).padStart(2, '0') + '/' + info.date.getFullYear();
+          if (!nbChartMap[dstr]) nbChartMap[dstr] = { name: dstr, nb: 0 };
+          nbChartMap[dstr].nb += 1;
+      });
+      
+      const nbChartData = Object.values(nbChartMap).sort((a,b) => {
+         const da = parseAppSheetDate(a.name);
+         const db = parseAppSheetDate(b.name);
+         if (da && db && !isNaN(da) && !isNaN(db)) return da.getTime() - db.getTime();
+         return a.name.localeCompare(b.name);
+      });
+
+      let nbCMode = 'month';
+      let nbCName = "Cùng Kỳ Tháng Trước";
+      if (nbStartDate && nbEndDate) {
+          const start = new Date(nbStartDate);
+          const end = new Date(nbEndDate);
+          const diffDays = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)); 
+          if (diffDays <= 14) { nbCMode = 'week'; nbCName = "Cùng Kỳ Tuần Trước"; }
+      } else if (nbStartDate && !nbEndDate) {
+          const diffDays = Math.ceil(Math.abs(new Date() - new Date(nbStartDate)) / (1000 * 60 * 60 * 24)); 
+          if (diffDays <= 14) { nbCMode = 'week'; nbCName = "Cùng Kỳ Tuần Trước"; }
+      }
+
+      const nbCompChartData = nbChartData.map(item => {
+         let previousNB = 0;
+         let previousName = "";
+         const d = parseAppSheetDate(item.name);
+         if (d && !isNaN(d)) {
+            const prevDate = new Date(d);
+            if (nbCMode === 'week') prevDate.setDate(prevDate.getDate() - 7);
+            else prevDate.setMonth(prevDate.getMonth() - 1);
+            
+            const pKey = prevDate.toISOString().split('T')[0];
+            previousNB = allNBMap[pKey] || 0;
+            previousName = `${String(prevDate.getMonth() + 1).padStart(2, '0')}/${String(prevDate.getDate()).padStart(2, '0')}/${prevDate.getFullYear()}`;
+         }
+         return { ...item, previousNB, previousName };
+      });
+
+      return {
+         nbComparisonChartData: nbCompChartData,
+         nbComparisonName: nbCName,
+         nbCompareMode: nbCMode
+      };
+  }, [dataDH, nbStartDate, nbEndDate]);
+
+  const { 
+     newBuyersToday, newBuyersOrderIds, newCustomersToday, 
+     uniqueCustomers, totalBaoGiaCount, totalDonHangCount, 
+     conversionRateCount, sumBaoGia, sumDonHang,
+     topCustomers, topSuppliers, recentActivities, finalTopProducts
+  } = useMemo(() => {
+      const customerFirstOrderMap = {};
+      dataDH.forEach(row => {
+         const name = String(getCustomerName(row)).trim();
+         const d = parseAppSheetDate(getRowDateStr(row));
+         const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
+         if (d && !isNaN(d)) {
+            if (!customerFirstOrderMap[name] || d < customerFirstOrderMap[name].date) {
+               customerFirstOrderMap[name] = { date: d, orderId: so_don_hang };
+            }
+         }
+      });
+
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+
+      let nbToday = 0;
+      const nbOrderIds = [];
+      Object.values(customerFirstOrderMap).forEach(info => {
+         if (info.date.getTime() >= todayStart.getTime() && info.date.getTime() <= todayEnd.getTime()) {
+             nbToday++;
+             nbOrderIds.push(info.orderId);
+         }
+      });
+
+      const newCustsToday = dataBG.filter(row => {
+        const soBaoGia = String(row.So_bao_gia || row.id || row.ID || "");
+        return (soBaoGia.startsWith("001/") || soBaoGia.startsWith("001-")) && isDateToday(getRowDateStr(row));
+      }).length;
+
+      const allCustomerNamesSet = new Set();
+      dataBG.forEach(r => allCustomerNamesSet.add(String(getCustomerName(r)).trim()));
+      dataDH.forEach(r => allCustomerNamesSet.add(String(getCustomerName(r)).trim()));
+      const uCustomers = Array.from(allCustomerNamesSet).filter(n => n && n !== "Unknown").sort();
+
+      const customerQuotes = dataBG.filter(r => String(getCustomerName(r)).trim() === selectedCustomer);
+      const customerOrders = dataDH.filter(r => String(getCustomerName(r)).trim() === selectedCustomer);
+      
+      const tBaoGiaCount = customerQuotes.length;
+      const tDonHangCount = customerOrders.length;
+      const sBaoGia = getSum(customerQuotes);
+      const sDonHang = getSum(customerOrders);
+
+      const cRateCount = tBaoGiaCount > 0 ? ((tDonHangCount / tBaoGiaCount) * 100).toFixed(1) : (tDonHangCount > 0 ? 100 : 0);
+      
+      const customerRevMap = {};
+      dataDH.forEach(r => {
+         const n = String(getCustomerName(r)).trim();
+         if(n && n !== 'Unknown') customerRevMap[n] = (customerRevMap[n] || 0) + getSaleValue(r);
+      });
+      const tCustomers = Object.entries(customerRevMap).sort((a,b)=>b[1]-a[1]).slice(0,50);
+
+      const suplierRevMap = {};
+      dataMH.forEach(r => {
+         const n = String(getCustomerName(r)).trim();
+         if(n && n !== 'Unknown') suplierRevMap[n] = (suplierRevMap[n] || 0) + getSaleValue(r);
+      });
+      const tSuppliers = Object.entries(suplierRevMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+      const allActivities = [...dataBG.map(r=>({...r, actType: 'baogia'})), ...dataDH.map(r=>({...r, actType: 'donhang'}))].filter(r => parseAppSheetDate(getRowDateStr(r)));
+      allActivities.sort((a,b) => parseAppSheetDate(getRowDateStr(b)).getTime() - parseAppSheetDate(getRowDateStr(a)).getTime());
+      const rActivities = allActivities.slice(0, 5);
+
+      const productCountMap = {};
+      const productSalesMap = {};
+      dataCTDH.forEach(row => {
+         const proName = String(row.Ten_sanpham || row.ten_san_pham || row.TenSanPham || row.Ten_san_pham || row.SanPham || row.Product || row.Name || "").trim();
+         if(proName && proName !== "Unknown" && proName !== "undefined" && proName !== "" && !proName.toLowerCase().includes("vận chuyển")) {
+            if (!productCountMap[proName]) {
+                productCountMap[proName] = 0;
+                productSalesMap[proName] = 0;
+            }
+            productCountMap[proName] += 1;
+            const qty = Number(row.So_luong || row.SoLuong || row.so_luong || row.Qty || row.Quantity || 0);
+            productSalesMap[proName] += qty;
+         }
+      });
+
+      const topProductsRaw = Object.entries(productCountMap).sort((a,b) => b[1] - a[1]).slice(0, 5);
+      const maxProductCount = topProductsRaw.length > 0 ? topProductsRaw[0][1] : 1; 
+
+      const fTopProducts = topProductsRaw.map((p, index) => {
+         const colors = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#6366f1"];
+         return {
+            name: p[0],
+            sold: p[1],
+            volume: productSalesMap[p[0]],
+            target: maxProductCount, 
+            color: colors[index % colors.length]
+         }
+      });
+
+      return {
+         newBuyersToday: nbToday,
+         newBuyersOrderIds: nbOrderIds,
+         newCustomersToday: newCustsToday,
+         uniqueCustomers: uCustomers,
+         totalBaoGiaCount: tBaoGiaCount,
+         totalDonHangCount: tDonHangCount,
+         conversionRateCount: cRateCount,
+         sumBaoGia: sBaoGia,
+         sumDonHang: sDonHang,
+         topCustomers: tCustomers,
+         topSuppliers: tSuppliers,
+         recentActivities: rActivities,
+         finalTopProducts: fTopProducts
+      };
+  }, [dataBG, dataDH, dataMH, dataCTDH, selectedCustomer]);
+
+  const { filteredProfitData, totalProfitDoanhThu, totalProfitGiaVon, totalProfitCpKhac, totalProfitCpVC, totalProfitFinal } = useMemo(() => {
+     const mhByOrder = {};
+     const dgcByOrder = {};
+     const vcByOrder = {};
+
+     const orderIds = new Set();
+     dataDH.forEach(r => {
+        const id = String(r.So_don_hang || r.So_bao_gia || r.So_mua_hang || r.id || r.ID || r.Id || "N/A").trim();
+        if (id !== "N/A") orderIds.add(id);
+     });
+
+     const populateMap = (sourceArr, targetMap) => {
+        sourceArr.forEach(r => {
+             let matchedId = null;
+             const idKey = r.So_don_hang || r.So_bao_gia || r.So_mua_hang || r.DH_Ref || r.don_hang_id;
+             if (idKey && orderIds.has(String(idKey).trim())) {
+                 matchedId = String(idKey).trim();
+             } else {
+                 for (let v of Object.values(r)) {
+                    const strV = String(v).trim();
+                    if (orderIds.has(strV)) {
+                        matchedId = strV;
+                        break;
+                    }
+                 }
+             }
+             if (matchedId) {
+                if (!targetMap[matchedId]) targetMap[matchedId] = [];
+                targetMap[matchedId].push(r);
+             }
+        });
+     };
+
+     populateMap(dataMH, mhByOrder);
+     populateMap(dataDGC, dgcByOrder);
+     populateMap(dataVC, vcByOrder);
+
+     const getValTruocThue = (r) => {
+         const keys = ['Tong_tien_mua_vao_chua_VAT', 'Tong_tien_truoc_VAT', 'Truoc_thue', 'Truoc_VAT', 'Tổng tiền trước thuế', 'Trước thuế', 'Thành_tiền_trước_thuế', 'Thành tiền', 'Tong_tien', 'Tổng tiền', 'So_tien', 'Số tiền', 'total', 'Total'];
+         for (let k of keys) {
+             if (r[k] != null && String(r[k]).trim() !== "" && !isNaN(Number(r[k]))) return Number(r[k]);
+         }
+         return 0;
+     };
+
+     const getValTongTien = (r) => {
+         const keys = ['Tong_tien', 'Tổng tiền', 'So_tien', 'Số tiền', 'Thành tiền', 'Thanh_tien', 'total', 'Total', 'Tong_tien_truoc_VAT', 'Trước thuế'];
+         for (let k of keys) {
+             if (r[k] != null && String(r[k]).trim() !== "" && !isNaN(Number(r[k]))) return Number(r[k]);
+         }
+         return 0;
+     };
+
+     const profitDataTemp = dataDH.map(row => {
+         const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
+         const dateStr = getRowDateStr(row);
+         const d = parseAppSheetDate(dateStr);
+         const doanhThu = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || 0);
+
+         const relatedMH = mhByOrder[so_don_hang] || [];
+         const giaVon = relatedMH.reduce((acc, r) => acc + getValTruocThue(r), 0);
+
+         const relatedDGC = dgcByOrder[so_don_hang] || [];
+         const chiPhiKhac = relatedDGC.reduce((acc, r) => acc + getValTongTien(r), 0);
+
+         const relatedVC = vcByOrder[so_don_hang] || [];
+         const chiPhiVC = relatedVC.reduce((acc, r) => {
+             if (r.Tong_tien_VC_coVAT != null && String(r.Tong_tien_VC_coVAT).trim() !== "" && !isNaN(Number(r.Tong_tien_VC_coVAT))) {
+                 return acc + (Number(r.Tong_tien_VC_coVAT) / 1.08);
+             }
+             return acc + getValTruocThue(r);
+         }, 0);
+
+         const loiNhuan = doanhThu - giaVon - chiPhiKhac - chiPhiVC;
+
+         return {
+            so_don_hang,
+            Ngay_bao_gia: dateStr, 
+            date: d,
+            dateStr: d ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}` : dateStr,
+            khach_hang: String(getCustomerName(row)).trim(),
+            doanhThu,
+            giaVon,
+            chiPhiKhac,
+            chiPhiVC,
+            loiNhuan
+         };
+     });
+
      const start = startDate ? new Date(startDate).setHours(0,0,0,0) : 0;
      const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
-     return arr.filter(row => {
-        const dateStr = row.Ngay_bao_gia || row.Ngay_ban_hang || row.Ngay_mua_hang || row.date || row.Date || row['Ngày tạo'] || row['Ngày'];
-        const d = parseAppSheetDate(dateStr);
-        if(!d || isNaN(d.getTime())) return false;
-        return d.getTime() >= start && d.getTime() <= end;
-     });
-  };
 
-  const filteredBG = filterByDate(dataBG);
-  const filteredDH = filterByDate(dataDH);
-  const filteredMH = filterByDate(dataMH);
+     const fProfit = profitDataTemp.filter(r => {
+        if(!r.date || isNaN(r.date.getTime())) return false;
+        return r.date.getTime() >= start && r.date.getTime() <= end;
+     }).sort((a,b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
 
-  const totalBG = getSum(filteredBG);
-  const totalDH = getSum(filteredDH);
-  const totalMH = getSum(filteredMH);
-
-  const mergeDate = (arr, outputMap, key) => {
-    arr.forEach(curr => {
-      const date = curr.Ngay_bao_gia || curr.Ngay_ban_hang || curr.Ngay_mua_hang || curr.date || curr.Date || curr['Ngày tạo'] || curr['Ngày'] || "Unknown";
-      const val = curr['Tong_tien_da_ co_VAT'] || curr.Tong_tien_da_co_VAT || curr.Tong_tien_mua_hang_co_VAT || curr.total || curr.Total || curr['Tổng tiền'] || curr['Thành tiền'] || curr.Price || 0;
-      if (!outputMap[date]) outputMap[date] = { name: date, dh: 0, mh: 0 };
-      outputMap[date][key] += Number(val);
-    });
-  };
-
-  const chartMap = {};
-  mergeDate(filteredDH, chartMap, 'dh');
-  mergeDate(filteredMH, chartMap, 'mh');
-  
-  const chartData = Object.values(chartMap).sort((a,b) => {
-     const da = parseAppSheetDate(a.name);
-     const db = parseAppSheetDate(b.name);
-     if (da && db && !isNaN(da) && !isNaN(db)) return da.getTime() - db.getTime();
-     return a.name.localeCompare(b.name);
-  });
-
-  const allDHMap = {};
-  dataDH.forEach(curr => {
-      const dateStr = curr.Ngay_bao_gia || curr.Ngay_ban_hang || curr.Ngay_mua_hang || curr.date || curr.Date || curr['Ngày tạo'] || curr['Ngày'];
-      const val = curr['Tong_tien_da_ co_VAT'] || curr.Tong_tien_da_co_VAT || curr.Tong_tien_mua_hang_co_VAT || curr.total || curr.Total || curr['Tổng tiền'] || curr['Thành tiền'] || curr.Price || 0;
-      const d = parseAppSheetDate(dateStr);
-      if (d && !isNaN(d)) {
-         const dKey = d.toISOString().split('T')[0];
-         if (!allDHMap[dKey]) allDHMap[dKey] = 0;
-         allDHMap[dKey] += Number(val);
-      }
-  });
-
-   let compareMode = 'month'; // 'week' or 'month'
-   let comparisonName = "Cùng Kỳ Tháng Trước";
-
-   if (startDate && endDate) {
-       const start = new Date(startDate);
-       const end = new Date(endDate);
-       const diffTime = Math.abs(end - start);
-       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-       if (diffDays <= 14) {
-           compareMode = 'week';
-           comparisonName = "Cùng Kỳ Tuần Trước";
-       }
-   } else if (startDate && !endDate) {
-       const start = new Date(startDate);
-       const today = new Date();
-       const diffTime = Math.abs(today - start);
-       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-       if (diffDays <= 14) {
-           compareMode = 'week';
-           comparisonName = "Cùng Kỳ Tuần Trước";
-       }
-   }
-
-  const comparisonChartData = chartData.map(item => {
-     let previousDH = 0;
-     let previousName = "";
-     const d = parseAppSheetDate(item.name);
-     if (d && !isNaN(d)) {
-        const prevDate = new Date(d);
-        if (compareMode === 'week') {
-            prevDate.setDate(prevDate.getDate() - 7);
-        } else {
-            prevDate.setMonth(prevDate.getMonth() - 1);
-        }
-        const pKey = prevDate.toISOString().split('T')[0];
-        previousDH = allDHMap[pKey] || 0;
-        const pd_m = String(prevDate.getMonth() + 1).padStart(2, '0');
-        const pd_d = String(prevDate.getDate()).padStart(2, '0');
-        previousName = `${pd_m}/${pd_d}/${prevDate.getFullYear()}`;
-     }
      return {
-        ...item,
-        previousDH,
-        previousName
-     };
-  });
-
-  const sumCurrentDH = comparisonChartData.reduce((acc, item) => acc + (item.dh || 0), 0);
-  const sumPreviousDH = comparisonChartData.reduce((acc, item) => acc + (item.previousDH || 0), 0);
-  const formattedSumCurrentDH = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(sumCurrentDH);
-  const formattedSumPreviousDH = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(sumPreviousDH);
-  
-  const legendCurrentDH = `Doanh Thu Hiện Tại (${formattedSumCurrentDH})`;
-  const legendPreviousDH = `${comparisonName} (${formattedSumPreviousDH})`;
-
-  // ========== LỌC KHÁCH HÀNG MỚI CHUYÊN SÂU (Cho biểu đồ) ==========
-  const allNewCustomers = dataBG.filter(row => {
-    const soBaoGia = String(row.So_bao_gia || row.id || row.ID || "");
-    return (soBaoGia.startsWith("001/") || soBaoGia.startsWith("001-"));
-  });
-
-  const allNCMap = {};
-  allNewCustomers.forEach(curr => {
-      const dateStr = curr.Ngay_bao_gia || curr.date || curr.Date || curr['Ngày tạo'] || curr['Ngày'];
-      const d = parseAppSheetDate(dateStr);
-      if (d && !isNaN(d)) {
-         const dKey = d.toISOString().split('T')[0];
-         if (!allNCMap[dKey]) allNCMap[dKey] = 0;
-         allNCMap[dKey] += 1;
-      }
-  });
-
-  const filteredNewCustomers = allNewCustomers.filter(row => {
-    const dateStr = row.Ngay_bao_gia || row.date || row.Date || row['Ngày tạo'] || row['Ngày'];
-    const d = parseAppSheetDate(dateStr);
-    if (!d || isNaN(d)) return false;
-    const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const start = ncStartDate ? new Date(ncStartDate) : null;
-    const end = ncEndDate ? new Date(ncEndDate) : null;
-    if (start) start.setHours(0,0,0,0);
-    if (end) end.setHours(23,59,59,999);
-    if (start && end) return itemDate >= start && itemDate <= end;
-    if (start) return itemDate >= start;
-    if (end) return itemDate <= end;
-    return true;
-  });
-
-  const ncChartMap = {};
-  filteredNewCustomers.forEach(curr => {
-      const dateStr = curr.Ngay_bao_gia || curr.date || curr.Date || curr['Ngày tạo'] || curr['Ngày'];
-      const d = parseAppSheetDate(dateStr);
-      if (d && !isNaN(d)) {
-         const dstr = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/' + d.getFullYear();
-         if (!ncChartMap[dstr]) ncChartMap[dstr] = { name: dstr, nc: 0 };
-         ncChartMap[dstr].nc += 1;
-      }
-  });
-  
-  const ncChartData = Object.values(ncChartMap).sort((a,b) => {
-     const da = parseAppSheetDate(a.name);
-     const db = parseAppSheetDate(b.name);
-     if (da && db && !isNaN(da) && !isNaN(db)) return da.getTime() - db.getTime();
-     return a.name.localeCompare(b.name);
-  });
-
-  let ncCompareMode = 'month';
-  let ncComparisonName = "Cùng Kỳ Tháng Trước";
-  if (ncStartDate && ncEndDate) {
-      const start = new Date(ncStartDate);
-      const end = new Date(ncEndDate);
-      const diffTime = Math.abs(end - start);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-      if (diffDays <= 14) {
-          ncCompareMode = 'week';
-          ncComparisonName = "Cùng Kỳ Tuần Trước";
-      }
-  } else if (ncStartDate && !ncEndDate) {
-      const start = new Date(ncStartDate);
-      const today = new Date();
-      const diffTime = Math.abs(today - start);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-      if (diffDays <= 14) {
-          ncCompareMode = 'week';
-          ncComparisonName = "Cùng Kỳ Tuần Trước";
-      }
-  }
-
-  const ncComparisonChartData = ncChartData.map(item => {
-     let previousNC = 0;
-     let previousName = "";
-     const d = parseAppSheetDate(item.name);
-     if (d && !isNaN(d)) {
-        const prevDate = new Date(d);
-        if (ncCompareMode === 'week') {
-            prevDate.setDate(prevDate.getDate() - 7);
-        } else {
-            prevDate.setMonth(prevDate.getMonth() - 1);
-        }
-        const pKey = prevDate.toISOString().split('T')[0];
-        previousNC = allNCMap[pKey] || 0;
-        const pd_m = String(prevDate.getMonth() + 1).padStart(2, '0');
-        const pd_d = String(prevDate.getDate()).padStart(2, '0');
-        previousName = `${pd_m}/${pd_d}/${prevDate.getFullYear()}`;
+        filteredProfitData: fProfit,
+        totalProfitDoanhThu: fProfit.reduce((acc, r) => acc + r.doanhThu, 0),
+        totalProfitGiaVon: fProfit.reduce((acc, r) => acc + r.giaVon, 0),
+        totalProfitCpKhac: fProfit.reduce((acc, r) => acc + r.chiPhiKhac, 0),
+        totalProfitCpVC: fProfit.reduce((acc, r) => acc + r.chiPhiVC, 0),
+        totalProfitFinal: fProfit.reduce((acc, r) => acc + r.loiNhuan, 0)
      }
-     return { ...item, previousNC, previousName };
-  });
+  }, [dataDH, dataMH, dataDGC, dataVC, startDate, endDate]);
+
+  const NBCustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{ backgroundColor: 'white', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: 'var(--text-primary)' }}>{label}</p>
+          {payload.map((entry, index) => {
+             const val = entry.value;
+             let title = entry.name;
+             if (entry.dataKey === 'previousNB' && entry.payload.previousName) {
+                title = `${entry.name} (${entry.payload.previousName})`;
+             }
+             return (
+               <div key={`item-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: entry.color, borderRadius: '50%' }}></span>
+                  <span style={{ color: entry.color, fontSize: '13px' }}>{title}:</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '13px', color: 'var(--text-primary)' }}>{val} khách</span>
+               </div>
+             );
+          })}
+        </div>
+      );
+    }
+    return null;
+  };
 
   const NCCustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -337,7 +691,6 @@ function App() {
     }
     return null;
   };
-  // ========== END - KHÁCH HÀNG MỚI ==========
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -366,206 +719,6 @@ function App() {
     return null;
   };
 
-
-
-  const isDateToday = (dateStr) => {
-     if (!dateStr) return false;
-     const d = parseAppSheetDate(dateStr);
-     if (!d || isNaN(d)) return false;
-     const today = new Date();
-     return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-  };
-
-  const getCustomerName = (row) => row.Ten_khach_hang || row.Ten_NCC || row.khachhang || row.Khachhang || row['Khách hàng'] || row.supplier || row['Nhà cung cấp'] || row.Supplier || "Unknown";
-  const getRowDateStr = (row) => row.Ngay_bao_gia || row.Ngay_ban_hang || row.Ngay_mua_hang || row.date || row.Date || row['Ngày tạo'] || row['Ngày'];
-
-  const customerFirstOrderMap = {};
-  dataDH.forEach(row => {
-     const name = String(getCustomerName(row)).trim();
-     const dateStr = getRowDateStr(row);
-     const d = parseAppSheetDate(dateStr);
-     const so_don_hang = row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A";
-     if (d && !isNaN(d)) {
-        if (!customerFirstOrderMap[name] || d < customerFirstOrderMap[name].date) {
-           customerFirstOrderMap[name] = { date: d, orderId: so_don_hang };
-        }
-     }
-  });
-
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
-  let newBuyersToday = 0;
-  const newBuyersOrderIds = [];
-  Object.values(customerFirstOrderMap).forEach(info => {
-     const firstDate = info.date;
-     if (firstDate.getTime() >= todayStart.getTime() && firstDate.getTime() <= todayEnd.getTime()) {
-         newBuyersToday++;
-         newBuyersOrderIds.push(info.orderId);
-     }
-  });
-
-  const newCustomersToday = filteredBG.filter(row => {
-    const soBaoGia = String(row.So_bao_gia || row.id || row.ID || "");
-    const date = row.Ngay_bao_gia || row.date || row.Date || row['Ngày tạo'] || row['Ngày'] || "";
-    return (soBaoGia.startsWith("001/") || soBaoGia.startsWith("001-")) && isDateToday(date);
-  }).length;
-
-  // Báo Cáo Chốt Đơn
-  const allCustomerNamesSet = new Set();
-  dataBG.forEach(r => allCustomerNamesSet.add(String(getCustomerName(r)).trim()));
-  dataDH.forEach(r => allCustomerNamesSet.add(String(getCustomerName(r)).trim()));
-  const uniqueCustomers = Array.from(allCustomerNamesSet).filter(n => n && n !== "Unknown").sort();
-
-  const customerQuotes = dataBG.filter(r => String(getCustomerName(r)).trim() === selectedCustomer);
-  const customerOrders = dataDH.filter(r => String(getCustomerName(r)).trim() === selectedCustomer);
-  
-  const totalBaoGiaCount = customerQuotes.length;
-  const totalDonHangCount = customerOrders.length;
-  
-  const sumBaoGia = getSum(customerQuotes);
-  const sumDonHang = getSum(customerOrders);
-
-  const conversionRateCount = totalBaoGiaCount > 0 ? ((totalDonHangCount / totalBaoGiaCount) * 100).toFixed(1) : (totalDonHangCount > 0 ? 100 : 0);
-  const conversionRateValue = sumBaoGia > 0 ? ((sumDonHang / sumBaoGia) * 100).toFixed(1) : (sumDonHang > 0 ? 100 : 0);
-
-  // ===== NEW COMMERCIAL DASHBOARD LOGIC =====
-  const getSaleValue = (row) => Number(row['Tong_tien_da_ co_VAT'] || row.Tong_tien_da_co_VAT || row.Tong_tien_mua_hang_co_VAT || row.total || row.Total || row['Tổng tiền'] || row['Thành tiền'] || row.Price || 0);
-  
-  // 1. Top Customers
-  const customerRevMap = {};
-  dataDH.forEach(r => {
-     const n = String(getCustomerName(r)).trim();
-     if(n && n !== 'Unknown') {
-        customerRevMap[n] = (customerRevMap[n] || 0) + getSaleValue(r);
-     }
-  });
-  const topCustomers = Object.entries(customerRevMap).sort((a,b)=>b[1]-a[1]).slice(0,50);
-
-  // 2. Top Suppliers
-  const suplierRevMap = {};
-  dataMH.forEach(r => {
-     const n = String(getCustomerName(r)).trim();
-     if(n && n !== 'Unknown') {
-        suplierRevMap[n] = (suplierRevMap[n] || 0) + getSaleValue(r);
-     }
-  });
-  const topSuppliers = Object.entries(suplierRevMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
-
-  // 3. Recent Feed
-  const allActivities = [...dataBG.map(r=>({...r, actType: 'baogia'})), ...dataDH.map(r=>({...r, actType: 'donhang'}))].filter(r => parseAppSheetDate(getRowDateStr(r)));
-  allActivities.sort((a,b) => parseAppSheetDate(getRowDateStr(b)).getTime() - parseAppSheetDate(getRowDateStr(a)).getTime());
-  const recentActivities = allActivities.slice(0, 5);
-
-  // 4. Products Integration (Real Data)
-  const productCountMap = {};
-  const productSalesMap = {}; // Thống kê thêm số lượng nếu có
-
-  dataCTDH.forEach(row => {
-     // Fetch the product name from either Ten_sanpham, ten_san_pham, etc.
-     const proName = String(row.Ten_sanpham || row.ten_san_pham || row.TenSanPham || row.Ten_san_pham || row.SanPham || row.Product || row.Name || "").trim();
-     if(proName && proName !== "Unknown" && proName !== "undefined" && proName !== "" && !proName.toLowerCase().includes("vận chuyển")) {
-        if (!productCountMap[proName]) {
-            productCountMap[proName] = 0;
-            productSalesMap[proName] = 0;
-        }
-        // Count appearance frequency
-        productCountMap[proName] += 1;
-        
-        // Count volume if the quantity field exists
-        const qty = Number(row.So_luong || row.SoLuong || row.so_luong || row.Qty || row.Quantity || 0);
-        productSalesMap[proName] += qty;
-     }
-  });
-
-  const topProductsRaw = Object.entries(productCountMap).sort((a,b) => b[1] - a[1]).slice(0, 5);
-  // Pick the max to format the progress bar
-  const maxProductCount = topProductsRaw.length > 0 ? topProductsRaw[0][1] : 1; 
-
-  const finalTopProducts = topProductsRaw.map((p, index) => {
-     const colors = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#6366f1"];
-     return {
-        name: p[0],
-        sold: p[1], // This represents Frequency (Times appeared)
-        volume: productSalesMap[p[0]], // Optional volume info
-        target: maxProductCount, 
-        color: colors[index % colors.length]
-     }
-  });
-  
-  // 5. Profitability Calculation
-  const profitDataTemp = dataDH.map(row => {
-     const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
-     const dateStr = getRowDateStr(row);
-     const d = parseAppSheetDate(dateStr);
-     
-     const doanhThu = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || 0);
-
-     const matchId = (r, target) => {
-         if (!target || target === "N/A") return false;
-         for (let v of Object.values(r)) {
-             if (String(v).trim() === target) return true;
-         }
-         return false;
-     };
-
-     const getValTruocThue = (r) => {
-         const keys = ['Tong_tien_mua_vao_chua_VAT', 'Tong_tien_truoc_VAT', 'Truoc_thue', 'Truoc_VAT', 'Tổng tiền trước thuế', 'Trước thuế', 'Thành_tiền_trước_thuế', 'Thành tiền', 'Tong_tien', 'Tổng tiền', 'So_tien', 'Số tiền', 'total', 'Total'];
-         for (let k of keys) {
-             if (r[k] != null && String(r[k]).trim() !== "" && !isNaN(Number(r[k]))) return Number(r[k]);
-         }
-         return 0;
-     };
-
-     const getValTongTien = (r) => {
-         const keys = ['Tong_tien', 'Tổng tiền', 'So_tien', 'Số tiền', 'Thành tiền', 'Thanh_tien', 'total', 'Total', 'Tong_tien_truoc_VAT', 'Trước thuế'];
-         for (let k of keys) {
-             if (r[k] != null && String(r[k]).trim() !== "" && !isNaN(Number(r[k]))) return Number(r[k]);
-         }
-         return 0;
-     };
-
-     const relatedMH = dataMH.filter(r => matchId(r, so_don_hang));
-     const giaVon = relatedMH.reduce((acc, r) => acc + getValTruocThue(r), 0);
-
-     const relatedDGC = dataDGC.filter(r => matchId(r, so_don_hang));
-     const chiPhiKhac = relatedDGC.reduce((acc, r) => acc + getValTongTien(r), 0);
-
-     const relatedVC = dataVC.filter(r => matchId(r, so_don_hang));
-     const chiPhiVC = relatedVC.reduce((acc, r) => {
-         if (r.Tong_tien_VC_coVAT != null && String(r.Tong_tien_VC_coVAT).trim() !== "" && !isNaN(Number(r.Tong_tien_VC_coVAT))) {
-             return acc + (Number(r.Tong_tien_VC_coVAT) / 1.08);
-         }
-         return acc + getValTruocThue(r);
-     }, 0);
-
-     const loiNhuan = doanhThu - giaVon - chiPhiKhac - chiPhiVC;
-
-     return {
-        so_don_hang,
-        Ngay_bao_gia: dateStr, // For filterByDate to work
-        date: d,
-        dateStr: d ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}` : dateStr,
-        khach_hang: String(getCustomerName(row)).trim(),
-        doanhThu,
-        giaVon,
-        chiPhiKhac,
-        chiPhiVC,
-        loiNhuan
-     };
-  });
-  
-  const filteredProfitData = filterByDate(profitDataTemp).sort((a,b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
-  
-  const totalProfitDoanhThu = filteredProfitData.reduce((acc, r) => acc + r.doanhThu, 0);
-  const totalProfitGiaVon = filteredProfitData.reduce((acc, r) => acc + r.giaVon, 0);
-  const totalProfitCpKhac = filteredProfitData.reduce((acc, r) => acc + r.chiPhiKhac, 0);
-  const totalProfitCpVC = filteredProfitData.reduce((acc, r) => acc + r.chiPhiVC, 0);
-  const totalProfitFinal = filteredProfitData.reduce((acc, r) => acc + r.loiNhuan, 0);
-
-  // ==========================================
 
   return (
     <div className="layout">
@@ -650,7 +803,7 @@ function App() {
                        </tr>
                      </thead>
                      <tbody>
-                       {misaPurchaseData.map((r, i) => (
+                       {misaPurchaseData.slice((misaPage - 1) * itemsPerPage, misaPage * itemsPerPage).map((r, i) => (
                           <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
                             <td style={{padding: '12px 16px', fontWeight: 600}}>{r.RefNo}</td>
                             <td style={{padding: '12px 16px'}}>{r.RefDate}</td>
@@ -664,6 +817,14 @@ function App() {
                        )}
                      </tbody>
                    </table>
+                   
+                   {misaPurchaseData.length > itemsPerPage && (
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', gap: '16px', borderTop: '1px solid var(--border-glass)' }}>
+                         <button onClick={() => setMisaPage(p => Math.max(1, p - 1))} disabled={misaPage === 1} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: misaPage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Trước</button>
+                         <span style={{color: 'var(--text-secondary)'}}>Trang {misaPage} / {Math.ceil(misaPurchaseData.length / itemsPerPage)}</span>
+                         <button onClick={() => setMisaPage(p => Math.min(Math.ceil(misaPurchaseData.length / itemsPerPage), p + 1))} disabled={misaPage >= Math.ceil(misaPurchaseData.length / itemsPerPage)} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: misaPage >= Math.ceil(misaPurchaseData.length / itemsPerPage) ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Sau</button>
+                      </div>
+                   )}
                 </div>
              )}
           </div>
@@ -713,7 +874,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProfitData.map((r, i) => (
+                    {filteredProfitData.slice((profitPage - 1) * itemsPerPage, profitPage * itemsPerPage).map((r, i) => (
                        <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
                          <td style={{padding: '12px 16px', fontWeight: 600}}>{r.so_don_hang}</td>
                          <td style={{padding: '12px 16px'}}>{r.dateStr}</td>
@@ -730,41 +891,96 @@ function App() {
                     )}
                   </tbody>
                 </table>
+
+                {filteredProfitData.length > itemsPerPage && (
+                   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', gap: '16px', borderTop: '1px solid var(--border-glass)' }}>
+                      <button onClick={() => setProfitPage(p => Math.max(1, p - 1))} disabled={profitPage === 1} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: profitPage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Trước</button>
+                      <span style={{color: 'var(--text-secondary)'}}>Trang {profitPage} / {Math.ceil(filteredProfitData.length / itemsPerPage)}</span>
+                      <button onClick={() => setProfitPage(p => Math.min(Math.ceil(filteredProfitData.length / itemsPerPage), p + 1))} disabled={profitPage >= Math.ceil(filteredProfitData.length / itemsPerPage)} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: profitPage >= Math.ceil(filteredProfitData.length / itemsPerPage) ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Sau</button>
+                   </div>
+                )}
              </div>
           </div>
         ) : (
           <div className="dashboard-grid">
             {/* KPI Overview */}
-            <div className="kpi-cards">
-              <div className="kpi-card glass-panel" style={{border: '1px solid rgba(139, 92, 246, 0.2)'}}>
-                <div className="kpi-header">
-                  <span>Khách Hàng Mới</span>
-                  <div style={{padding: '6px', borderRadius: '8px', background: 'rgba(139, 92, 246, 0.1)'}}>
-                     <UserPlus size={18} color="#8b5cf6" />
-                  </div>
-                </div>
-                <div className="kpi-value">{newCustomersToday}</div>
-                <div className="kpi-trend trend-up"><Users size={14}/> trong ngày hôm nay</div>
-              </div>
-
-              <div className="kpi-card glass-panel" style={{border: '1px solid rgba(245, 158, 11, 0.2)'}}>
-                <div className="kpi-header">
-                  <span>Khách Chốt Đơn Đầu</span>
-                  <div style={{padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)'}}>
-                     <ShoppingCart size={18} color="#f59e0b" />
-                  </div>
-                </div>
-                <div className="kpi-value">{newBuyersToday}</div>
-                <div className="kpi-trend trend-up" style={{flexDirection: 'column', alignItems: 'flex-start'}}>
-                    <div style={{display: 'flex', alignItems: 'center', gap: '4px'}}><Users size={14}/> khách có đơn đầu hôm nay</div>
-                    {newBuyersOrderIds.length > 0 && (
-                       <div style={{fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', wordBreak: 'break-all'}}>
-                         Mã ĐH: {newBuyersOrderIds.slice(0,3).join(', ')}{newBuyersOrderIds.length > 3 ? '...' : ''}
-                       </div>
-                    )}
+            {/* Section 1: Khách Hàng Mới */}
+            <div className="secondary-chart glass-panel kpi-card" style={{border: '1px solid rgba(139, 92, 246, 0.2)', display: 'flex', flexDirection: 'column'}}>
+              <div className="kpi-header" style={{marginBottom: 'auto'}}>
+                <span>Khách Hàng Mới</span>
+                <div style={{padding: '6px', borderRadius: '8px', background: 'rgba(139, 92, 246, 0.1)'}}>
+                   <UserPlus size={18} color="#8b5cf6" />
                 </div>
               </div>
+              <div className="kpi-value" style={{fontSize: '64px', margin: 'auto 0', alignSelf: 'center'}}>{newCustomersToday}</div>
+              <div className="kpi-trend trend-up" style={{marginTop: 'auto', justifyContent: 'center', fontSize: '16px'}}><Users size={16}/> trong ngày hôm nay</div>
+            </div>
 
+            <div className="chart-container glass-panel" style={{marginBottom: '24px'}}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                  <h3 className="chart-title" style={{ margin: 0, color: '#8b5cf6' }}>Biểu Đồ Khách Hàng Mới</h3>
+                  <div className="glass-panel" style={{ padding: '4px 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="date" value={ncStartDate} onChange={e=>setNcStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                    <span style={{color: 'var(--text-secondary)'}}>-</span>
+                    <input type="date" value={ncEndDate} onChange={e=>setNcEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                  </div>
+               </div>
+               <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={ncComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
+                   <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 12}} />
+                   <YAxis stroke="var(--text-secondary)" tick={{fontSize: 12}} allowDecimals={false} />
+                   <Tooltip content={<NCCustomTooltip />} />
+                   <Legend verticalAlign="top" height={36}/>
+                   <Line type="monotone" dataKey="nc" name="Khách Mới Trong Kỳ" stroke="#8b5cf6" strokeWidth={3} dot={{r: 4, fill: '#8b5cf6'}} activeDot={{r: 8}} />
+                   <Line type="monotone" dataKey="previousNC" name={ncComparisonName} stroke="#d8b4fe" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Section 2: Khách Chốt Đơn Đầu */}
+            <div className="secondary-chart glass-panel kpi-card" style={{border: '1px solid rgba(245, 158, 11, 0.2)', display: 'flex', flexDirection: 'column'}}>
+              <div className="kpi-header" style={{marginBottom: 'auto'}}>
+                <span>Khách Chốt Đơn Đầu</span>
+                <div style={{padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)'}}>
+                   <ShoppingCart size={18} color="#f59e0b" />
+                </div>
+              </div>
+              <div className="kpi-value" style={{fontSize: '64px', margin: 'auto 0', alignSelf: 'center'}}>{newBuyersToday}</div>
+              <div className="kpi-trend trend-up" style={{flexDirection: 'column', alignItems: 'center', marginTop: 'auto', gap: '8px'}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '4px', fontSize: '16px'}}><Users size={16}/> có đơn đầu hôm nay</div>
+                  {newBuyersOrderIds.length > 0 && (
+                     <div style={{fontSize: '12px', color: 'var(--text-secondary)', wordBreak: 'break-all', textAlign: 'center'}}>
+                       Mã ĐH: {newBuyersOrderIds.slice(0,3).join(', ')}{newBuyersOrderIds.length > 3 ? '...' : ''}
+                     </div>
+                  )}
+              </div>
+            </div>
+
+            <div className="chart-container glass-panel" style={{marginBottom: '24px'}}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                  <h3 className="chart-title" style={{ margin: 0, color: '#f59e0b' }}>Biểu Đồ Khách Có Đơn Mới</h3>
+                  <div className="glass-panel" style={{ padding: '4px 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="date" value={nbStartDate} onChange={e=>setNbStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                    <span style={{color: 'var(--text-secondary)'}}>-</span>
+                    <input type="date" value={nbEndDate} onChange={e=>setNbEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                  </div>
+               </div>
+               <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={nbComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
+                   <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 12}} />
+                   <YAxis stroke="var(--text-secondary)" tick={{fontSize: 12}} allowDecimals={false} />
+                   <Tooltip content={<NBCustomTooltip />} />
+                   <Legend verticalAlign="top" height={36}/>
+                   <Line type="monotone" dataKey="nb" name="Khách Đơn Mới Trong Kỳ" stroke="#f59e0b" strokeWidth={3} dot={{r: 4, fill: '#f59e0b'}} activeDot={{r: 8}} />
+                   <Line type="monotone" dataKey="previousNB" name={nbComparisonName} stroke="#fde68a" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Other KPIs Section */}
+            <div className="kpi-cards" style={{gridColumn: 'span 12', marginBottom: '24px'}}>
               <div className="kpi-card glass-panel" style={{border: '1px solid rgba(59, 130, 246, 0.2)'}}>
                 <div className="kpi-header">
                   <span>Tổng Báo Giá</span>
@@ -799,9 +1015,8 @@ function App() {
               </div>
             </div>
 
-            {/* Row 2: Main Charts */}
-            {/* Main Graphs Area */}
-            <div className="chart-container glass-panel" style={{marginBottom: '24px'}}>
+            {/* Main Graphs Area Dashboard */}
+            <div className="chart-container glass-panel" style={{gridColumn: 'span 12', height: 'auto', minHeight: '450px', marginBottom: '24px'}}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                   <h3 className="chart-title" style={{ margin: 0 }}>Biểu Đồ Doanh Thu Từng Ngày</h3>
                   <div className="glass-panel" style={{ padding: '8px 16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -824,43 +1039,35 @@ function App() {
               </ResponsiveContainer>
             </div>
 
-            {/* New Customer Trends Area */}
-            <div className="secondary-chart glass-panel" style={{marginBottom: '24px'}}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                  <h3 className="chart-title" style={{ margin: 0, color: '#8b5cf6' }}>Khách Hàng Mới</h3>
-                  <div className="glass-panel" style={{ padding: '4px 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input type="date" value={ncStartDate} onChange={e=>setNcStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
-                    <span style={{color: 'var(--text-secondary)'}}>-</span>
-                    <input type="date" value={ncEndDate} onChange={e=>setNcEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
-                  </div>
-               </div>
-               <ResponsiveContainer width="100%" height={350}>
-                <LineChart data={ncComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
-                   <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 12}} />
-                   <YAxis stroke="var(--text-secondary)" tick={{fontSize: 12}} allowDecimals={false} />
-                   <Tooltip content={<NCCustomTooltip />} />
-                   <Legend verticalAlign="top" height={36}/>
-                   <Line type="monotone" dataKey="nc" name="Khách Mới Trọng Kỳ" stroke="#10b981" strokeWidth={3} dot={{r: 4, fill: '#10b981'}} activeDot={{r: 8}} />
-                   <Line type="monotone" dataKey="previousNC" name={ncComparisonName} stroke="#8b5cf6" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
             {/* Customer Conversion Report */}
             <div className="report-container glass-panel" style={{gridColumn: '1 / -1', padding: '24px', marginBottom: '24px'}}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                   <h3 className="chart-title" style={{ margin: 0 }}>Báo Cáo Tỷ Lệ Chốt Đơn Của Khách Hàng</h3>
-                  <input 
-                     list="customer-list-dropdown"
-                     value={selectedCustomer} 
-                     onChange={e => setSelectedCustomer(e.target.value)}
-                     placeholder="-- Gõ tên khách tìm kiếm --"
-                     style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', outline: 'none', color: 'var(--text-primary)', minWidth: '250px' }}
-                  />
-                  <datalist id="customer-list-dropdown">
-                     {uniqueCustomers.map(c => <option key={c} value={c} />)}
-                  </datalist>
+                  <div style={{ position: 'relative' }}>
+                     <input 
+                        value={selectedCustomer} 
+                        onChange={e => setSelectedCustomer(e.target.value)}
+                        placeholder="-- Gõ tên khách tìm kiếm --"
+                        style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', outline: 'none', color: 'var(--text-primary)', minWidth: '250px', width: '100%' }}
+                     />
+                     {selectedCustomer && selectedCustomer.trim().length > 0 && !uniqueCustomers.includes(selectedCustomer) && (
+                        <ul style={{ background: 'white', position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: '250px', overflowY: 'auto', zIndex: 100, padding: 0, margin: '4px 0 0 0', listStyle: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                           {uniqueCustomers.filter(c => c.toLowerCase().includes(selectedCustomer.toLowerCase())).length > 0 ? (
+                              uniqueCustomers.filter(c => c.toLowerCase().includes(selectedCustomer.toLowerCase())).map(c => (
+                                 <li 
+                                    key={c} 
+                                    onMouseDown={() => setSelectedCustomer(c)}
+                                    style={{ padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '14px' }}
+                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)'}
+                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                                 >{c}</li>
+                              ))
+                           ) : (
+                              <li style={{ padding: '10px 16px', color: 'var(--text-secondary)', fontSize: '14px' }}>Không tìm thấy khách hàng...</li>
+                           )}
+                        </ul>
+                     )}
+                  </div>
                </div>
 
                {selectedCustomer ? (
