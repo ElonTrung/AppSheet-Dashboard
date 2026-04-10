@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/appsheet-api/:path*",
+      "destination": "https://api.appsheet.com/:path*"
+    },
+    {
+      "source": "/misa-auth/:path*",
+      "destination": "https://actapp.misa.vn/:path*"
+    },
+    {
+      "source": "/misa-api/:path*",
+      "destination": "https://openapi.misa.com.vn/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
