@@ -69,9 +69,9 @@ function App() {
 
   const [startDate, setStartDate] = useState(getLastWeekString());
   const [endDate, setEndDate] = useState(getTodayString());
-  const [ncStartDate, setNcStartDate] = useState(getTodayString());
+  const [ncStartDate, setNcStartDate] = useState(getLastWeekString());
   const [ncEndDate, setNcEndDate] = useState(getTodayString());
-  const [nbStartDate, setNbStartDate] = useState(getTodayString());
+  const [nbStartDate, setNbStartDate] = useState(getLastWeekString());
   const [nbEndDate, setNbEndDate] = useState(getTodayString());
   const [crStartDate, setCrStartDate] = useState(getLastWeekString());
   const [crEndDate, setCrEndDate] = useState(getTodayString());
@@ -441,21 +441,32 @@ function App() {
          }
       });
 
-      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+      const nbStart = nbStartDate ? new Date(nbStartDate) : null;
+      if (nbStart) nbStart.setHours(0, 0, 0, 0);
+      const nbEnd = nbEndDate ? new Date(nbEndDate) : null;
+      if (nbEnd) nbEnd.setHours(23, 59, 59, 999);
 
       let nbToday = 0;
       const nbOrderIds = [];
       Object.values(customerFirstOrderMap).forEach(info => {
-         if (info.date.getTime() >= todayStart.getTime() && info.date.getTime() <= todayEnd.getTime()) {
+         if (nbStart && nbEnd && info.date.getTime() >= nbStart.getTime() && info.date.getTime() <= nbEnd.getTime()) {
              nbToday++;
              nbOrderIds.push(info.orderId);
          }
       });
 
+      const ncStart = ncStartDate ? new Date(ncStartDate) : null;
+      if (ncStart) ncStart.setHours(0, 0, 0, 0);
+      const ncEnd = ncEndDate ? new Date(ncEndDate) : null;
+      if (ncEnd) ncEnd.setHours(23, 59, 59, 999);
+
       const newCustsToday = dataBG.filter(row => {
         const soBaoGia = String(row.So_bao_gia || row.id || row.ID || "");
-        return (soBaoGia.startsWith("001/") || soBaoGia.startsWith("001-")) && isDateToday(getRowDateStr(row));
+        if (!(soBaoGia.startsWith("001/") || soBaoGia.startsWith("001-"))) return false;
+        const d = parseAppSheetDate(getRowDateStr(row));
+        if (!d || isNaN(d)) return false;
+        if (ncStart && ncEnd) return d.getTime() >= ncStart.getTime() && d.getTime() <= ncEnd.getTime();
+        return false;
       }).length;
 
       const allCustomerNamesSet = new Set();
@@ -553,7 +564,7 @@ function App() {
          recentActivities: rActivities,
          finalTopProducts: fTopProducts
       };
-  }, [dataBG, dataDH, dataMH, dataCTDH, selectedCustomers, crStartDate, crEndDate]);
+  }, [dataBG, dataDH, dataMH, dataCTDH, selectedCustomers, crStartDate, crEndDate, ncStartDate, ncEndDate, nbStartDate, nbEndDate]);
 
   const { filteredProfitData, totalProfitDoanhThu, totalProfitGiaVon, totalProfitCpKhac, totalProfitCpVC, totalProfitFinal } = useMemo(() => {
      const mhByOrder = {};
@@ -931,7 +942,7 @@ function App() {
                        <h3 style={{ margin: 0, color: '#8b5cf6', fontSize: '16px', fontWeight: 'bold' }}>Khách Hàng Mới</h3>
                        <span style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newCustomersToday}</span>
                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', fontWeight: '500' }}>
-                         <Users size={14}/> trong ngày hôm nay
+                         <Users size={14}/> trong kỳ báo cáo
                        </span>
                      </div>
                      <div className="glass-panel" style={{ padding: '6px 12px', display: 'flex', gap: '8px', alignItems: 'center', borderRadius: '16px' }}>
@@ -960,7 +971,7 @@ function App() {
                        <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '16px', fontWeight: 'bold' }}>Khách Có Đơn Mới</h3>
                        <span style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newBuyersToday}</span>
                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', fontWeight: '500' }}>
-                         <Users size={14}/> có đơn đầu hôm nay
+                         <Users size={14}/> có đơn đầu trong kỳ
                        </span>
                        {newBuyersOrderIds.length > 0 && (
                           <span style={{fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px'}}>
