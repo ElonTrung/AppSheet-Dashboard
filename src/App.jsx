@@ -73,7 +73,10 @@ function App() {
   const [ncEndDate, setNcEndDate] = useState(getTodayString());
   const [nbStartDate, setNbStartDate] = useState(getTodayString());
   const [nbEndDate, setNbEndDate] = useState(getTodayString());
-  const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [crStartDate, setCrStartDate] = useState(getLastWeekString());
+  const [crEndDate, setCrEndDate] = useState(getTodayString());
+  const [selectedCustomers, setSelectedCustomers] = useState([]);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [dataCTDH, setDataCTDH] = useState([]);
   const [dataDGC, setDataDGC] = useState([]);
   const [dataVC, setDataVC] = useState([]);
@@ -423,8 +426,7 @@ function App() {
 
   const { 
      newBuyersToday, newBuyersOrderIds, newCustomersToday, 
-     uniqueCustomers, totalBaoGiaCount, totalDonHangCount, 
-     conversionRateCount, sumBaoGia, sumDonHang,
+     uniqueCustomers, selectedCustomerStats,
      topCustomers, topSuppliers, recentActivities, finalTopProducts
   } = useMemo(() => {
       const customerFirstOrderMap = {};
@@ -461,15 +463,37 @@ function App() {
       dataDH.forEach(r => allCustomerNamesSet.add(String(getCustomerName(r)).trim()));
       const uCustomers = Array.from(allCustomerNamesSet).filter(n => n && n !== "Unknown").sort();
 
-      const customerQuotes = dataBG.filter(r => String(getCustomerName(r)).trim() === selectedCustomer);
-      const customerOrders = dataDH.filter(r => String(getCustomerName(r)).trim() === selectedCustomer);
-      
-      const tBaoGiaCount = customerQuotes.length;
-      const tDonHangCount = customerOrders.length;
-      const sBaoGia = getSum(customerQuotes);
-      const sDonHang = getSum(customerOrders);
-
-      const cRateCount = tBaoGiaCount > 0 ? ((tDonHangCount / tBaoGiaCount) * 100).toFixed(1) : (tDonHangCount > 0 ? 100 : 0);
+      const selectedCustomerStats = selectedCustomers.map(custName => {
+          const quotes = dataBG.filter(r => {
+             if (String(getCustomerName(r)).trim() !== custName) return false;
+             if (!crStartDate && !crEndDate) return true;
+             const d = parseAppSheetDate(getRowDateStr(r));
+             if (!d || isNaN(d.getTime())) return false;
+             const start = crStartDate ? new Date(crStartDate).setHours(0,0,0,0) : 0;
+             const end = crEndDate ? new Date(crEndDate).setHours(23,59,59,999) : Infinity;
+             return d.getTime() >= start && d.getTime() <= end;
+          });
+          const orders = dataDH.filter(r => {
+             if (String(getCustomerName(r)).trim() !== custName) return false;
+             if (!crStartDate && !crEndDate) return true;
+             const d = parseAppSheetDate(getRowDateStr(r));
+             if (!d || isNaN(d.getTime())) return false;
+             const start = crStartDate ? new Date(crStartDate).setHours(0,0,0,0) : 0;
+             const end = crEndDate ? new Date(crEndDate).setHours(23,59,59,999) : Infinity;
+             return d.getTime() >= start && d.getTime() <= end;
+          });
+          const tBaoGiaCount = quotes.length;
+          const tDonHangCount = orders.length;
+          const sumDonHang = getSum(orders);
+          const rate = tBaoGiaCount > 0 ? ((tDonHangCount / tBaoGiaCount) * 100).toFixed(1) : (tDonHangCount > 0 ? 100 : 0);
+          return {
+             name: custName,
+             baoGiaCount: tBaoGiaCount,
+             donHangCount: tDonHangCount,
+             conversionRate: rate,
+             doanhThu: sumDonHang
+          };
+      });
       
       const customerRevMap = {};
       dataDH.forEach(r => {
@@ -523,17 +547,13 @@ function App() {
          newBuyersOrderIds: nbOrderIds,
          newCustomersToday: newCustsToday,
          uniqueCustomers: uCustomers,
-         totalBaoGiaCount: tBaoGiaCount,
-         totalDonHangCount: tDonHangCount,
-         conversionRateCount: cRateCount,
-         sumBaoGia: sBaoGia,
-         sumDonHang: sDonHang,
+         selectedCustomerStats: selectedCustomerStats,
          topCustomers: tCustomers,
          topSuppliers: tSuppliers,
          recentActivities: rActivities,
          finalTopProducts: fTopProducts
       };
-  }, [dataBG, dataDH, dataMH, dataCTDH, selectedCustomer]);
+  }, [dataBG, dataDH, dataMH, dataCTDH, selectedCustomers, crStartDate, crEndDate]);
 
   const { filteredProfitData, totalProfitDoanhThu, totalProfitGiaVon, totalProfitCpKhac, totalProfitCpVC, totalProfitFinal } = useMemo(() => {
      const mhByOrder = {};
@@ -1029,60 +1049,92 @@ function App() {
 
             {/* Customer Conversion Report */}
             <div className="report-container glass-panel" style={{gridColumn: '1 / -1', padding: '24px', marginBottom: '24px'}}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+               <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '24px' }}>
                   <h3 className="chart-title" style={{ margin: 0 }}>Báo Cáo Tỷ Lệ Chốt Đơn Của Khách Hàng</h3>
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ padding: '6px 16px', display: 'flex', gap: '12px', alignItems: 'center', borderRadius: '24px', background: 'white', border: '1px solid var(--border-glass)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <Filter size={16} color="var(--text-secondary)" />
+                    <input type="date" value={crStartDate} onChange={e=>setCrStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '13px'}} />
+                    <span style={{color: 'var(--text-secondary)'}}>-</span>
+                    <input type="date" value={crEndDate} onChange={e=>setCrEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '13px'}} />
+                  </div>
+               </div>
+
+               <div style={{ border: '1px dashed var(--border-glass)', borderRadius: '12px', padding: '24px', minHeight: '150px' }}>
+                  <div style={{ position: 'relative', marginBottom: selectedCustomers.length > 0 ? '24px' : '40px', maxWidth: '300px' }}>
                      <input 
-                        value={selectedCustomer} 
-                        onChange={e => setSelectedCustomer(e.target.value)}
+                        value={customerSearchQuery} 
+                        onChange={e => setCustomerSearchQuery(e.target.value)}
                         placeholder="-- Gõ tên khách tìm kiếm --"
-                        style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', outline: 'none', color: 'var(--text-primary)', minWidth: '250px', width: '100%' }}
+                        style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'white', outline: 'none', color: 'var(--text-primary)', width: '100%', boxSizing: 'border-box' }}
                      />
-                     {selectedCustomer && selectedCustomer.trim().length > 0 && !uniqueCustomers.includes(selectedCustomer) && (
-                        <ul style={{ background: 'white', position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: '250px', overflowY: 'auto', zIndex: 100, padding: 0, margin: '4px 0 0 0', listStyle: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-                           {uniqueCustomers.filter(c => c.toLowerCase().includes(selectedCustomer.toLowerCase())).length > 0 ? (
-                              uniqueCustomers.filter(c => c.toLowerCase().includes(selectedCustomer.toLowerCase())).map(c => (
-                                 <li 
-                                    key={c} 
-                                    onMouseDown={() => setSelectedCustomer(c)}
-                                    style={{ padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '14px' }}
-                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)'}
-                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                                 >{c}</li>
-                              ))
+                     {customerSearchQuery && customerSearchQuery.trim().length > 0 && (
+                        <ul className="custom-scrollbar" style={{ background: 'white', position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: '250px', overflowY: 'auto', zIndex: 100, padding: 0, margin: '4px 0 0 0', listStyle: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                           {uniqueCustomers.filter(c => c.toLowerCase().includes(customerSearchQuery.toLowerCase())).length > 0 ? (
+                              uniqueCustomers.filter(c => c.toLowerCase().includes(customerSearchQuery.toLowerCase())).map(c => {
+                                 const isSelected = selectedCustomers.includes(c);
+                                 return (
+                                     <li 
+                                        key={c} 
+                                        onMouseDown={(e) => {
+                                           e.preventDefault();
+                                           if (isSelected) {
+                                              setSelectedCustomers(prev => prev.filter(item => item !== c));
+                                           } else {
+                                              setSelectedCustomers(prev => [...prev, c]);
+                                           }
+                                        }}
+                                        style={{ padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '12px' }}
+                                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.05)'}
+                                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                                     >
+                                        <input type="checkbox" checked={isSelected} readOnly style={{ cursor: 'pointer' }} />
+                                        {c}
+                                     </li>
+                                 );
+                              })
                            ) : (
                               <li style={{ padding: '10px 16px', color: 'var(--text-secondary)', fontSize: '14px' }}>Không tìm thấy khách hàng...</li>
                            )}
                         </ul>
                      )}
                   </div>
-               </div>
 
-               {selectedCustomer ? (
-                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                    <div className="glass-panel" style={{padding: '16px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
-                       <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Số lượng Báo Giá</div>
-                       <div style={{fontSize: '24px', fontWeight: 600, color: '#3b82f6'}}>{totalBaoGiaCount} <span style={{fontSize: '14px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>phiếu</span></div>
+                  {selectedCustomerStats.length > 0 ? (
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+                        {selectedCustomerStats.map(stat => (
+                           <div key={stat.name} style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '16px', borderBottom: '1px dashed var(--border-glass)' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '6px 16px', borderRadius: '16px', fontSize: '13px', fontWeight: 600, border: '1px solid rgba(59, 130, 246, 0.2)', width: 'fit-content' }}>
+                                 - {stat.name}
+                                 <button onClick={() => setSelectedCustomers(prev => prev.filter(item => item !== stat.name))} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>&times;</button>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                                 <div className="glass-panel" style={{padding: '16px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
+                                    <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Số lượng Báo Giá</div>
+                                    <div style={{fontSize: '24px', fontWeight: 600, color: '#3b82f6'}}>{stat.baoGiaCount} <span style={{fontSize: '14px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>phiếu</span></div>
+                                 </div>
+                                 <div className="glass-panel" style={{padding: '16px', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)'}}>
+                                    <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Số lượng Đơn Chốt</div>
+                                    <div style={{fontSize: '24px', fontWeight: 600, color: '#10b981'}}>{stat.donHangCount} <span style={{fontSize: '14px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>đơn</span></div>
+                                 </div>
+                                 <div className="glass-panel" style={{padding: '16px', background: 'rgba(139, 92, 246, 0.05)', border: '1px solid rgba(139, 92, 246, 0.2)'}}>
+                                    <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Tỷ Lệ Chốt (Số lượng)</div>
+                                    <div style={{fontSize: '24px', fontWeight: 600, color: '#8b5cf6'}}>{stat.conversionRate}%</div>
+                                 </div>
+                                 <div className="glass-panel" style={{padding: '16px', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.2)'}}>
+                                    <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Giá Trị Chốt Thực Tế</div>
+                                    <div style={{fontSize: '24px', fontWeight: 600, color: '#f59e0b'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(stat.doanhThu)}</div>
+                                 </div>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  ) : (
+                    <div style={{textAlign: 'center', color: 'var(--text-secondary)', padding: '24px 0'}}>
+                       Vui lòng chọn khách hàng trên để xem báo cáo chi tiết tỷ lệ chuyển đổi.
                     </div>
-                    <div className="glass-panel" style={{padding: '16px', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)'}}>
-                       <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Số lượng Đơn Chốt</div>
-                       <div style={{fontSize: '24px', fontWeight: 600, color: '#10b981'}}>{totalDonHangCount} <span style={{fontSize: '14px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>đơn</span></div>
-                    </div>
-                    <div className="glass-panel" style={{padding: '16px', background: 'rgba(139, 92, 246, 0.05)', border: '1px solid rgba(139, 92, 246, 0.2)'}}>
-                       <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Tỷ Lệ Chốt (Số lượng)</div>
-                       <div style={{fontSize: '24px', fontWeight: 600, color: '#8b5cf6'}}>{conversionRateCount}%</div>
-                    </div>
-                    <div className="glass-panel" style={{padding: '16px', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.2)'}}>
-                       <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Giá Trị Chốt Thực Tế</div>
-                       <div style={{fontSize: '24px', fontWeight: 600, color: '#f59e0b'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(sumDonHang)}</div>
-                    </div>
-                 </div>
-               ) : (
-                 <div style={{textAlign: 'center', color: 'var(--text-secondary)', padding: '32px 0', border: '1px dashed var(--border-glass)', borderRadius: '12px'}}>
-                    Vui lòng chọn khách hàng trên để xem báo cáo chi tiết tỷ lệ chuyển đổi.
-                 </div>
-               )}
-             </div>
+                  )}
+               </div>
+            </div>
 
             {/* Row 3: Top Ranking Tables */}
             <div className="half-container glass-panel" style={{overflow: 'hidden', display: 'flex', flexDirection: 'column'}}>
