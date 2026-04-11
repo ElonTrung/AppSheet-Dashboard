@@ -923,68 +923,75 @@ function App() {
           </div>
         ) : (
           <div className="dashboard-grid">
-            {/* KPI Overview */}
-            {/* Section 1: Khách Hàng Mới Area */}
-            <div className="chart-container glass-panel" style={{marginBottom: '24px'}}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
-                    <h3 style={{ margin: 0, color: '#8b5cf6', fontSize: '18px', fontWeight: 'bold' }}>Khách Hàng Mới</h3>
-                    <span style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newCustomersToday}</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '14px', fontWeight: '500' }}>
-                      <Users size={16}/> trong ngày hôm nay
-                    </span>
-                  </div>
-                  <div className="glass-panel" style={{ padding: '4px 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input type="date" value={ncStartDate} onChange={e=>setNcStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
-                    <span style={{color: 'var(--text-secondary)'}}>-</span>
-                    <input type="date" value={ncEndDate} onChange={e=>setNcEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
-                  </div>
-               </div>
-               <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={ncComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
-                   <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 12}} />
-                   <YAxis stroke="var(--text-secondary)" tick={{fontSize: 12}} allowDecimals={false} />
-                   <Tooltip content={<NCCustomTooltip />} />
-                   <Legend verticalAlign="top" height={36}/>
-                   <Line type="monotone" dataKey="nc" name="Khách Mới Trong Kỳ" stroke="#8b5cf6" strokeWidth={3} dot={{r: 4, fill: '#8b5cf6'}} activeDot={{r: 8}} />
-                   <Line type="monotone" dataKey="previousNC" name={ncComparisonName} stroke="#d8b4fe" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
+            {/* KPI Overview Header */}
+            <div style={{ gridColumn: '1 / -1', marginBottom: '8px' }}>
+               <h2 style={{ margin: '0 0 4px 0', fontSize: '22px', fontWeight: 600 }}>Hiệu suất Kinh doanh</h2>
+               <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '14px' }}>Khoản mục từ Báo Giá, Đơn Bán ra & Đơn Nhập vào.</p>
             </div>
-
-            {/* Section 2: Khách Chốt Đơn Đầu Area */}
-            <div className="chart-container glass-panel" style={{marginBottom: '24px'}}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
-                    <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '18px', fontWeight: 'bold' }}>Khách Có Đơn Mới</h3>
-                    <span style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newBuyersToday}</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '14px', fontWeight: '500' }}>
-                      <Users size={16}/> có đơn đầu hôm nay
-                    </span>
-                    {newBuyersOrderIds.length > 0 && (
-                       <span style={{fontSize: '13px', color: 'var(--text-secondary)', marginLeft: '8px'}}>
-                         (Mã ĐH: {newBuyersOrderIds.slice(0,3).join(', ')}{newBuyersOrderIds.length > 3 ? '...' : ''})
+            
+            <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+               {/* Section 1: Khách Hàng Mới Area */}
+               <div className="chart-container glass-panel" style={{ margin: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+                       <h3 style={{ margin: 0, color: '#8b5cf6', fontSize: '16px', fontWeight: 'bold' }}>Khách Hàng Mới</h3>
+                       <span style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newCustomersToday}</span>
+                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', fontWeight: '500' }}>
+                         <Users size={14}/> trong ngày hôm nay
                        </span>
-                    )}
+                     </div>
+                     <div className="glass-panel" style={{ padding: '6px 12px', display: 'flex', gap: '8px', alignItems: 'center', borderRadius: '16px' }}>
+                       <input type="date" value={ncStartDate} onChange={e=>setNcStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                       <span style={{color: 'var(--text-secondary)'}}>-</span>
+                       <input type="date" value={ncEndDate} onChange={e=>setNcEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                     </div>
                   </div>
-                  <div className="glass-panel" style={{ padding: '4px 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input type="date" value={nbStartDate} onChange={e=>setNbStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
-                    <span style={{color: 'var(--text-secondary)'}}>-</span>
-                    <input type="date" value={nbEndDate} onChange={e=>setNbEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
-                  </div>
+                  <ResponsiveContainer width="100%" height={240}>
+                   <LineChart data={ncComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
+                      <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 11}} />
+                      <YAxis stroke="var(--text-secondary)" tick={{fontSize: 11}} allowDecimals={false} />
+                      <Tooltip content={<NCCustomTooltip />} />
+                      <Legend verticalAlign="top" height={36}/>
+                      <Line type="monotone" dataKey="nc" name="Khách Mới Trong Kỳ" stroke="#8b5cf6" strokeWidth={3} dot={{r: 4, fill: '#8b5cf6'}} activeDot={{r: 6}} />
+                      <Line type="monotone" dataKey="previousNC" name={ncComparisonName} stroke="#d8b4fe" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                   </LineChart>
+                 </ResponsiveContainer>
                </div>
-               <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={nbComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
-                   <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 12}} />
-                   <YAxis stroke="var(--text-secondary)" tick={{fontSize: 12}} allowDecimals={false} />
-                   <Tooltip content={<NBCustomTooltip />} />
-                   <Legend verticalAlign="top" height={36}/>
-                   <Line type="monotone" dataKey="nb" name="Khách Đơn Mới Trong Kỳ" stroke="#f59e0b" strokeWidth={3} dot={{r: 4, fill: '#f59e0b'}} activeDot={{r: 8}} />
-                   <Line type="monotone" dataKey="previousNB" name={nbComparisonName} stroke="#fde68a" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
+
+               {/* Section 2: Khách Chốt Đơn Đầu Area */}
+               <div className="chart-container glass-panel" style={{ margin: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+                       <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '16px', fontWeight: 'bold' }}>Khách Có Đơn Mới</h3>
+                       <span style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newBuyersToday}</span>
+                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', fontWeight: '500' }}>
+                         <Users size={14}/> có đơn đầu hôm nay
+                       </span>
+                       {newBuyersOrderIds.length > 0 && (
+                          <span style={{fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px'}}>
+                            ({newBuyersOrderIds.slice(0,2).join(', ')})
+                          </span>
+                       )}
+                     </div>
+                     <div className="glass-panel" style={{ padding: '6px 12px', display: 'flex', gap: '8px', alignItems: 'center', borderRadius: '16px' }}>
+                       <input type="date" value={nbStartDate} onChange={e=>setNbStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                       <span style={{color: 'var(--text-secondary)'}}>-</span>
+                       <input type="date" value={nbEndDate} onChange={e=>setNbEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                     </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={240}>
+                   <LineChart data={nbComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
+                      <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 11}} />
+                      <YAxis stroke="var(--text-secondary)" tick={{fontSize: 11}} allowDecimals={false} />
+                      <Tooltip content={<NBCustomTooltip />} />
+                      <Legend verticalAlign="top" height={36}/>
+                      <Line type="monotone" dataKey="nb" name="Khách Đơn Mới Trong Kỳ" stroke="#f59e0b" strokeWidth={3} dot={{r: 4, fill: '#f59e0b'}} activeDot={{r: 6}} />
+                      <Line type="monotone" dataKey="previousNB" name={nbComparisonName} stroke="#fde68a" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                   </LineChart>
+                 </ResponsiveContainer>
+               </div>
             </div>
 
             {/* Other KPIs Section */}
