@@ -923,13 +923,7 @@ function App() {
           </div>
         ) : (
           <div className="dashboard-grid">
-            {/* KPI Overview Header */}
-            <div style={{ gridColumn: '1 / -1', marginBottom: '8px' }}>
-               <h2 style={{ margin: '0 0 4px 0', fontSize: '22px', fontWeight: 600 }}>Hiệu suất Kinh doanh</h2>
-               <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '14px' }}>Khoản mục từ Báo Giá, Đơn Bán ra & Đơn Nhập vào.</p>
-            </div>
-            
-            <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+            <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
                {/* Section 1: Khách Hàng Mới Area */}
                <div className="chart-container glass-panel" style={{ margin: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
