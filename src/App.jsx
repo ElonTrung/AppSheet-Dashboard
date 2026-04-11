@@ -925,7 +925,7 @@ function App() {
           <div className="dashboard-grid">
             <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
                {/* Section 1: Khách Hàng Mới Area */}
-               <div className="chart-container glass-panel" style={{ margin: 0 }}>
+               <div className="glass-panel" style={{ margin: 0, padding: '24px', minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
                        <h3 style={{ margin: 0, color: '#8b5cf6', fontSize: '16px', fontWeight: 'bold' }}>Khách Hàng Mới</h3>
@@ -954,7 +954,7 @@ function App() {
                </div>
 
                {/* Section 2: Khách Chốt Đơn Đầu Area */}
-               <div className="chart-container glass-panel" style={{ margin: 0 }}>
+               <div className="glass-panel" style={{ margin: 0, padding: '24px', minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
                        <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '16px', fontWeight: 'bold' }}>Khách Có Đơn Mới</h3>
@@ -987,6 +987,7 @@ function App() {
                  </ResponsiveContainer>
                </div>
             </div>
+
 
             {/* Other KPIs Section */}
             <div className="kpi-cards" style={{gridColumn: 'span 12', marginBottom: '24px'}}>
