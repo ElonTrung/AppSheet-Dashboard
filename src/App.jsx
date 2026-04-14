@@ -1090,6 +1090,39 @@ function App() {
     return null;
   };
 
+  const todaysOrdersData = useMemo(() => {
+     const todayOrders = dataDH.filter(row => isDateToday(getRowDateStr(row)));
+     
+     const quoteDateMap = {};
+     dataBG.forEach(b => {
+         const id = String(b.So_bao_gia || b.id || b.ID || "").trim();
+         if (id) quoteDateMap[id] = parseAppSheetDate(getRowDateStr(b));
+     });
+
+     return todayOrders.map(row => {
+         const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
+         const dhDateStr = getRowDateStr(row);
+         const dhDate = parseAppSheetDate(dhDateStr);
+         
+         const bgDate = quoteDateMap[so_don_hang];
+         const bgDateStr = bgDate ? `${String(bgDate.getDate()).padStart(2,'0')}/${String(bgDate.getMonth()+1).padStart(2,'0')}/${bgDate.getFullYear()}` : "N/A";
+         
+         let waitDays = "N/A";
+         if (dhDate && bgDate && !isNaN(dhDate) && !isNaN(bgDate)) {
+             const diffTime = dhDate.getTime() - bgDate.getTime();
+             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+             waitDays = diffDays >= 0 ? diffDays : 0;
+         }
+
+         return {
+             so_don_hang,
+             bgDateStr,
+             dhDateStr: dhDate ? `${String(dhDate.getDate()).padStart(2,'0')}/${String(dhDate.getMonth()+1).padStart(2,'0')}/${dhDate.getFullYear()}` : (dhDateStr || "N/A"),
+             waitDays
+         };
+     });
+  }, [dataDH, dataBG]);
+
 
   return (
     <div className="layout">
@@ -1633,6 +1666,46 @@ function App() {
                        Vui lòng chọn tên sản phẩm ở phần trên để chạy thống kê.
                     </div>
                   )}
+               </div>
+            </div>
+
+            {/* Today's Orders Table */}
+            <div className="report-container glass-panel" style={{gridColumn: '1 / -1', padding: '24px', marginBottom: '24px'}}>
+               <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '24px' }}>
+                  <h3 className="chart-title" style={{ margin: 0, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                     <ShoppingCart size={18} color="#3b82f6" /> Danh Sách Đơn Hàng Hôm Nay
+                  </h3>
+               </div>
+               
+               <div style={{ border: '1px dashed var(--border-glass)', borderRadius: '12px', padding: '16px', overflowX: 'auto' }}>
+                 <table className="data-table" style={{ width: '100%' }}>
+                   <thead>
+                     <tr>
+                       <th>Số Đơn Hàng</th>
+                       <th>Ngày Báo Giá</th>
+                       <th style={{textAlign: 'center'}}>Số Ngày Chờ Chốt Đơn</th>
+                     </tr>
+                   </thead>
+                   <tbody>
+                     {todaysOrdersData.length > 0 ? (
+                        todaysOrdersData.map((order, i) => (
+                           <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
+                             <td style={{padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)'}}>{order.so_don_hang}</td>
+                             <td style={{padding: '12px 16px', color: 'var(--text-secondary)'}}>{order.bgDateStr}</td>
+                             <td style={{padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', color: order.waitDays !== "N/A" ? (order.waitDays > 3 ? '#ef4444' : '#10b981') : 'var(--text-secondary)'}}>
+                               {order.waitDays !== "N/A" ? `${order.waitDays} ngày` : "-"}
+                             </td>
+                           </tr>
+                        ))
+                     ) : (
+                        <tr>
+                           <td colSpan="3" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>
+                              Chưa có đơn chốt nào trong hôm nay.
+                           </td>
+                        </tr>
+                     )}
+                   </tbody>
+                 </table>
                </div>
             </div>
 
