@@ -71,13 +71,22 @@ function App() {
   const [endDate, setEndDate] = useState(getTodayString());
   const [ncStartDate, setNcStartDate] = useState(getLastWeekString());
   const [ncEndDate, setNcEndDate] = useState(getTodayString());
+  const [bgStartDate, setBgStartDate] = useState(getLastWeekString());
+  const [bgEndDate, setBgEndDate] = useState(getTodayString());
+  const [crateStartDate, setCrateStartDate] = useState(getLastWeekString());
+  const [crateEndDate, setCrateEndDate] = useState(getTodayString());
   const [nbStartDate, setNbStartDate] = useState(getLastWeekString());
   const [nbEndDate, setNbEndDate] = useState(getTodayString());
   const [crStartDate, setCrStartDate] = useState(getLastWeekString());
   const [crEndDate, setCrEndDate] = useState(getTodayString());
   const [selectedCustomers, setSelectedCustomers] = useState([]);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [prStartDate, setPrStartDate] = useState(getLastWeekString());
+  const [prEndDate, setPrEndDate] = useState(getTodayString());
   const [dataCTDH, setDataCTDH] = useState([]);
+  const [dataCTBG, setDataCTBG] = useState([]);
   const [dataDGC, setDataDGC] = useState([]);
   const [dataVC, setDataVC] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
@@ -95,14 +104,15 @@ function App() {
   useEffect(() => {
     const loadAllData = async () => {
       setLoading(true);
-      const [bg, dh, mh, ncc, ctdh, dgc, vc] = await Promise.all([
+      const [bg, dh, mh, ncc, ctdh, dgc, vc, ctbg] = await Promise.all([
         fetchAppSheetData("baogia"),
         fetchAppSheetData("donhang"),
         fetchAppSheetData("muahang"),
         fetchAppSheetData("ncc"),
         fetchAppSheetData("chitietdonhang"),
         fetchAppSheetData("denghichi"),
-        fetchAppSheetData("vanchuyen")
+        fetchAppSheetData("vanchuyen"),
+        fetchAppSheetData("chitietbaogia")
       ]);
       setDataBG(bg);
       setDataDH(dh);
@@ -111,6 +121,7 @@ function App() {
       setDataCTDH(ctdh);
       setDataDGC(dgc);
       setDataVC(vc);
+      setDataCTBG(ctbg);
       setLoading(false);
     };
     loadAllData();
@@ -344,6 +355,218 @@ function App() {
       };
   }, [dataBG, ncStartDate, ncEndDate]);
 
+  const { bgComparisonChartData, bgComparisonName, bgCompareMode, quotesInPeriod } = useMemo(() => {
+      const allQuotes = dataBG;
+
+      const allBGMap = {};
+      allQuotes.forEach(curr => {
+          const d = parseAppSheetDate(getRowDateStr(curr));
+          if (d && !isNaN(d)) {
+             const dKey = d.toISOString().split('T')[0];
+             if (!allBGMap[dKey]) allBGMap[dKey] = 0;
+             allBGMap[dKey] += 1;
+          }
+      });
+
+      const filteredQuotes = allQuotes.filter(row => {
+        const d = parseAppSheetDate(getRowDateStr(row));
+        if (!d || isNaN(d)) return false;
+        const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const start = bgStartDate ? new Date(bgStartDate) : null;
+        const end = bgEndDate ? new Date(bgEndDate) : null;
+        if (start) start.setHours(0,0,0,0);
+        if (end) end.setHours(23,59,59,999);
+        if (start && end) return itemDate >= start && itemDate <= end;
+        if (start) return itemDate >= start;
+        if (end) return itemDate <= end;
+        return true;
+      });
+
+      const bgChartMap = {};
+      filteredQuotes.forEach(curr => {
+          const d = parseAppSheetDate(getRowDateStr(curr));
+          if (d && !isNaN(d)) {
+             const dstr = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/' + d.getFullYear();
+             if (!bgChartMap[dstr]) bgChartMap[dstr] = { name: dstr, bg: 0 };
+             bgChartMap[dstr].bg += 1;
+          }
+      });
+      
+      const bgChartData = Object.values(bgChartMap).sort((a,b) => {
+         const da = parseAppSheetDate(a.name);
+         const db = parseAppSheetDate(b.name);
+         if (da && db && !isNaN(da) && !isNaN(db)) return da.getTime() - db.getTime();
+         return a.name.localeCompare(b.name);
+      });
+
+      let bgCMode = 'month';
+      let bgCName = "Cùng Kỳ Tháng Trước";
+      if (bgStartDate && bgEndDate) {
+          const start = new Date(bgStartDate);
+          const end = new Date(bgEndDate);
+          const diffTime = Math.abs(end - start);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+          if (diffDays <= 14) {
+              bgCMode = 'week';
+              bgCName = "Cùng Kỳ Tuần Trước";
+          }
+      } else if (bgStartDate && !bgEndDate) {
+          const start = new Date(bgStartDate);
+          const today = new Date();
+          const diffTime = Math.abs(today - start);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+          if (diffDays <= 14) {
+              bgCMode = 'week';
+              bgCName = "Cùng Kỳ Tuần Trước";
+          }
+      }
+
+      const bgCompChartData = bgChartData.map(item => {
+         let previousBG = 0;
+         let previousName = "";
+         const d = parseAppSheetDate(item.name);
+         if (d && !isNaN(d)) {
+            const prevDate = new Date(d);
+            if (bgCMode === 'week') {
+                prevDate.setDate(prevDate.getDate() - 7);
+            } else {
+                prevDate.setMonth(prevDate.getMonth() - 1);
+            }
+            const pKey = prevDate.toISOString().split('T')[0];
+            previousBG = allBGMap[pKey] || 0;
+            const pd_m = String(prevDate.getMonth() + 1).padStart(2, '0');
+            const pd_d = String(prevDate.getDate()).padStart(2, '0');
+            previousName = `${pd_m}/${pd_d}/${prevDate.getFullYear()}`;
+         }
+         return { ...item, previousBG, previousName };
+      });
+
+      return {
+         bgComparisonChartData: bgCompChartData,
+         bgComparisonName: bgCName,
+         bgCompareMode: bgCMode,
+         quotesInPeriod: filteredQuotes.length
+      };
+  }, [dataBG, bgStartDate, bgEndDate]);
+
+  const { crateComparisonChartData, crateComparisonName, crateCompareMode, currentCrate } = useMemo(() => {
+      const allBGMap = {};
+      dataBG.forEach(curr => {
+          const d = parseAppSheetDate(getRowDateStr(curr));
+          if (d && !isNaN(d)) {
+             const dKey = d.toISOString().split('T')[0];
+             if (!allBGMap[dKey]) allBGMap[dKey] = 0;
+             allBGMap[dKey] += 1;
+          }
+      });
+
+      const allDHMap = {};
+      dataDH.forEach(curr => {
+          const d = parseAppSheetDate(getRowDateStr(curr));
+          if (d && !isNaN(d)) {
+             const dKey = d.toISOString().split('T')[0];
+             if (!allDHMap[dKey]) allDHMap[dKey] = 0;
+             allDHMap[dKey] += 1;
+          }
+      });
+      
+      const start = crateStartDate ? new Date(crateStartDate) : null;
+      const end = crateEndDate ? new Date(crateEndDate) : null;
+      if (start) start.setHours(0,0,0,0);
+      if (end) end.setHours(23,59,59,999);
+
+      const currentDates = new Set();
+      dataBG.concat(dataDH).forEach(curr => {
+         const d = parseAppSheetDate(getRowDateStr(curr));
+         if (d && !isNaN(d)) {
+            const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            let inRange = true;
+            if (start && end) inRange = itemDate >= start && itemDate <= end;
+            else if (start) inRange = itemDate >= start;
+            else if (end) inRange = itemDate <= end;
+
+            if (inRange) {
+               const dstr = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/' + d.getFullYear();
+               currentDates.add(dstr);
+            }
+         }
+      });
+
+      const crateChartData = Array.from(currentDates).sort((a,b) => {
+         const da = parseAppSheetDate(a);
+         const db = parseAppSheetDate(b);
+         if (da && db && !isNaN(da) && !isNaN(db)) return da.getTime() - db.getTime();
+         return a.localeCompare(b);
+      }).map(dstr => {
+         const d = parseAppSheetDate(dstr);
+         const dKey = d ? d.toISOString().split('T')[0] : "";
+         const bg = allBGMap[dKey] || 0;
+         const dh = allDHMap[dKey] || 0;
+         const rate = bg > 0 ? (dh / bg) * 100 : (dh > 0 ? 100 : 0);
+         return { name: dstr, rate: Number(rate.toFixed(1)) };
+      });
+
+      let cMode = 'month';
+      let cName = "Cùng Kỳ Tháng Trước";
+      if (crateStartDate && crateEndDate) {
+          const diffDays = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)); 
+          if (diffDays <= 14) { cMode = 'week'; cName = "Cùng Kỳ Tuần Trước"; }
+      }
+
+      const compChartData = crateChartData.map(item => {
+         let previousRate = 0;
+         let previousName = "";
+         const d = parseAppSheetDate(item.name);
+         if (d && !isNaN(d)) {
+            const prevDate = new Date(d);
+            if (cMode === 'week') prevDate.setDate(prevDate.getDate() - 7);
+            else prevDate.setMonth(prevDate.getMonth() - 1);
+            
+            const pKey = prevDate.toISOString().split('T')[0];
+            const pBg = allBGMap[pKey] || 0;
+            const pDh = allDHMap[pKey] || 0;
+            previousRate = pBg > 0 ? (pDh / pBg) * 100 : (pDh > 0 ? 100 : 0);
+            previousRate = Number(previousRate.toFixed(1));
+
+            previousName = `${String(prevDate.getMonth() + 1).padStart(2, '0')}/${String(prevDate.getDate()).padStart(2, '0')}/${prevDate.getFullYear()}`;
+         }
+         return { ...item, previousRate, previousName };
+      });
+
+      let totalBgCurrent = 0;
+      let totalDhCurrent = 0;
+      dataBG.forEach(curr => {
+         const d = parseAppSheetDate(getRowDateStr(curr));
+         if (d && !isNaN(d)) {
+            const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            let inRange = true;
+            if (start && end) inRange = itemDate >= start && itemDate <= end;
+            else if (start) inRange = itemDate >= start;
+            else if (end) inRange = itemDate <= end;
+            if (inRange) totalBgCurrent++;
+         }
+      });
+      dataDH.forEach(curr => {
+         const d = parseAppSheetDate(getRowDateStr(curr));
+         if (d && !isNaN(d)) {
+            const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            let inRange = true;
+            if (start && end) inRange = itemDate >= start && itemDate <= end;
+            else if (start) inRange = itemDate >= start;
+            else if (end) inRange = itemDate <= end;
+            if (inRange) totalDhCurrent++;
+         }
+      });
+      const cRate = totalBgCurrent > 0 ? ((totalDhCurrent / totalBgCurrent) * 100).toFixed(1) : (totalDhCurrent > 0 ? 100 : 0);
+
+      return {
+         crateComparisonChartData: compChartData,
+         crateComparisonName: cName,
+         crateCompareMode: cMode,
+         currentCrate: cRate
+      };
+  }, [dataBG, dataDH, crateStartDate, crateEndDate]);
+
   const { nbComparisonChartData, nbComparisonName, nbCompareMode } = useMemo(() => {
       const customerFirstOrderMap = {};
       dataDH.forEach(row => {
@@ -566,6 +789,73 @@ function App() {
       };
   }, [dataBG, dataDH, dataMH, dataCTDH, selectedCustomers, crStartDate, crEndDate, ncStartDate, ncEndDate, nbStartDate, nbEndDate]);
 
+  const { uniqueProducts, selectedProductStats } = useMemo(() => {
+       const allProductNamesSet = new Set();
+       dataCTDH.forEach(r => allProductNamesSet.add(String(r.Ten_sanpham || r.ten_san_pham || r.TenSanPham || r.Ten_san_pham || r.SanPham || r.Product || r.Name || "").trim()));
+       dataCTBG.forEach(r => allProductNamesSet.add(String(r.Ten_sanpham || r.ten_san_pham || r.TenSanPham || r.Ten_san_pham || r.SanPham || r.Product || r.Name || "").trim()));
+       const uProducts = Array.from(allProductNamesSet).filter(n => n && n !== "Unknown" && n !== "undefined" && !n.toLowerCase().includes("vận chuyển")).sort();
+
+       const bgDateMap = {};
+       dataBG.forEach(b => {
+           const id = String(b.So_bao_gia || b.id || b.ID || "").trim();
+           if(id) bgDateMap[id] = parseAppSheetDate(getRowDateStr(b));
+       });
+       const dhDateMap = {};
+       dataDH.forEach(b => {
+           const id = String(b.So_don_hang || b.So_bao_gia || b.So_mua_hang || b.id || b.ID || "").trim();
+           if(id) dhDateMap[id] = parseAppSheetDate(getRowDateStr(b));
+       });
+
+       const stats = selectedProducts.map(prodName => {
+           const filteredQ = dataCTBG.filter(r => {
+               const p = String(r.Ten_sanpham || r.ten_san_pham || r.TenSanPham || r.Ten_san_pham || r.SanPham || r.Product || r.Name || "").trim();
+               if(p !== prodName) return false;
+               const id = String(r.So_bao_gia || r.ID_BaoGia || r.DH_Ref || r.don_hang_id || r.id).trim();
+               const d = bgDateMap[id];
+               if (!prStartDate && !prEndDate) return true;
+               if (!d || isNaN(d.getTime())) return false;
+               const start = prStartDate ? new Date(prStartDate).setHours(0,0,0,0) : 0;
+               const end = prEndDate ? new Date(prEndDate).setHours(23,59,59,999) : Infinity;
+               return d.getTime() >= start && d.getTime() <= end;
+           });
+
+           const filteredO = dataCTDH.filter(r => {
+               const p = String(r.Ten_sanpham || r.ten_san_pham || r.TenSanPham || r.Ten_san_pham || r.SanPham || r.Product || r.Name || "").trim();
+               if(p !== prodName) return false;
+               const id = String(r.So_don_hang || r.So_bao_gia || r.DH_Ref || r.id).trim();
+               const d = dhDateMap[id];
+               if (!prStartDate && !prEndDate) return true;
+               if (!d || isNaN(d.getTime())) return false;
+               const start = prStartDate ? new Date(prStartDate).setHours(0,0,0,0) : 0;
+               const end = prEndDate ? new Date(prEndDate).setHours(23,59,59,999) : Infinity;
+               return d.getTime() >= start && d.getTime() <= end;
+           });
+
+           const uniqueQuotes = new Set(filteredQ.map(r => String(r.So_bao_gia || r.ID_BaoGia || r.DH_Ref || r.don_hang_id || r.id).trim()));
+           const uniqueOrders = new Set(filteredO.map(r => String(r.So_don_hang || r.So_bao_gia || r.DH_Ref || r.id).trim()));
+
+           const quotesCount = uniqueQuotes.size;
+           const ordersCount = uniqueOrders.size;
+           const rate = quotesCount > 0 ? ((ordersCount / quotesCount) * 100).toFixed(1) : (ordersCount > 0 ? 100 : 0);
+
+           const qtyQ = filteredQ.reduce((acc, curr) => acc + Number(curr.So_luong || curr.SoLuong || curr.so_luong || curr.Qty || curr.Quantity || 0), 0);
+           const qtyO = filteredO.reduce((acc, curr) => acc + Number(curr.So_luong || curr.SoLuong || curr.so_luong || curr.Qty || curr.Quantity || 0), 0);
+           const qtyRate = qtyQ > 0 ? ((qtyO / qtyQ) * 100).toFixed(1) : (qtyO > 0 ? 100 : 0);
+
+           return {
+               name: prodName,
+               baoGiaCount: quotesCount,
+               donHangCount: ordersCount,
+               conversionRate: rate,
+               qtyBaoGia: qtyQ,
+               qtyDonHang: qtyO,
+               qtyConversionRate: qtyRate
+           };
+       });
+
+       return { uniqueProducts: uProducts, selectedProductStats: stats };
+  }, [dataBG, dataDH, dataCTBG, dataCTDH, selectedProducts, prStartDate, prEndDate]);
+
   const { filteredProfitData, totalProfitDoanhThu, totalProfitGiaVon, totalProfitCpKhac, totalProfitCpVC, totalProfitFinal } = useMemo(() => {
      const mhByOrder = {};
      const dgcByOrder = {};
@@ -714,6 +1004,56 @@ function App() {
                   <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: entry.color, borderRadius: '50%' }}></span>
                   <span style={{ color: entry.color, fontSize: '13px' }}>{title}:</span>
                   <span style={{ fontWeight: 'bold', fontSize: '13px', color: 'var(--text-primary)' }}>{val} khách</span>
+               </div>
+             );
+          })}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const BGCustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{ backgroundColor: 'white', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: 'var(--text-primary)' }}>{label}</p>
+          {payload.map((entry, index) => {
+             const val = entry.value;
+             let title = entry.name;
+             if (entry.dataKey === 'previousBG' && entry.payload.previousName) {
+                title = `${entry.name} (${entry.payload.previousName})`;
+             }
+             return (
+               <div key={`item-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: entry.color, borderRadius: '50%' }}></span>
+                  <span style={{ color: entry.color, fontSize: '13px' }}>{title}:</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '13px', color: 'var(--text-primary)' }}>{val} phiếu</span>
+               </div>
+             );
+          })}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const CRateCustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{ backgroundColor: 'white', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: 'var(--text-primary)' }}>{label}</p>
+          {payload.map((entry, index) => {
+             const val = entry.value;
+             let title = entry.name;
+             if (entry.dataKey === 'previousRate' && entry.payload.previousName) {
+                title = `${entry.name} (${entry.payload.previousName})`;
+             }
+             return (
+               <div key={`item-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: entry.color, borderRadius: '50%' }}></span>
+                  <span style={{ color: entry.color, fontSize: '13px' }}>{title}:</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '13px', color: 'var(--text-primary)' }}>{val}%</span>
                </div>
              );
           })}
@@ -997,6 +1337,64 @@ function App() {
                    </LineChart>
                  </ResponsiveContainer>
                </div>
+
+               {/* Section 3: Báo Giá Area */}
+               <div className="glass-panel" style={{ margin: 0, padding: '24px', minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+                       <h3 style={{ margin: 0, color: '#3b82f6', fontSize: '16px', fontWeight: 'bold' }}>Số Lượng Báo Giá</h3>
+                       <span style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{quotesInPeriod}</span>
+                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', fontWeight: '500' }}>
+                         <FileText size={14}/> phiếu trong kỳ
+                       </span>
+                     </div>
+                     <div className="glass-panel" style={{ padding: '6px 12px', display: 'flex', gap: '8px', alignItems: 'center', borderRadius: '16px' }}>
+                       <input type="date" value={bgStartDate} onChange={e=>setBgStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                       <span style={{color: 'var(--text-secondary)'}}>-</span>
+                       <input type="date" value={bgEndDate} onChange={e=>setBgEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                     </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={240}>
+                   <LineChart data={bgComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
+                      <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 11}} />
+                      <YAxis stroke="var(--text-secondary)" tick={{fontSize: 11}} allowDecimals={false} />
+                      <Tooltip content={<BGCustomTooltip />} />
+                      <Legend verticalAlign="top" height={36}/>
+                      <Line type="monotone" dataKey="bg" name="Báo Giá Trong Kỳ" stroke="#3b82f6" strokeWidth={3} dot={{r: 4, fill: '#3b82f6'}} activeDot={{r: 6}} />
+                      <Line type="monotone" dataKey="previousBG" name={bgComparisonName} stroke="#93c5fd" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                   </LineChart>
+                 </ResponsiveContainer>
+               </div>
+
+               {/* Section 4: Tỷ Lệ Chốt Area */}
+               <div className="glass-panel" style={{ margin: 0, padding: '24px', minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+                       <h3 style={{ margin: 0, color: '#ec4899', fontSize: '16px', fontWeight: 'bold' }}>Tỷ Lệ Chốt</h3>
+                       <span style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{currentCrate}%</span>
+                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', fontWeight: '500' }}>
+                         <Activity size={14}/> trong kỳ
+                       </span>
+                     </div>
+                     <div className="glass-panel" style={{ padding: '6px 12px', display: 'flex', gap: '8px', alignItems: 'center', borderRadius: '16px' }}>
+                       <input type="date" value={crateStartDate} onChange={e=>setCrateStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                       <span style={{color: 'var(--text-secondary)'}}>-</span>
+                       <input type="date" value={crateEndDate} onChange={e=>setCrateEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '12px'}} />
+                     </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={240}>
+                   <LineChart data={crateComparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" vertical={false}/>
+                      <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{fontSize: 11}} />
+                      <YAxis stroke="var(--text-secondary)" tick={{fontSize: 11}} />
+                      <Tooltip content={<CRateCustomTooltip />} />
+                      <Legend verticalAlign="top" height={36}/>
+                      <Line type="monotone" dataKey="rate" name="Tỷ Lệ Chốt Trong Kỳ" stroke="#ec4899" strokeWidth={3} dot={{r: 4, fill: '#ec4899'}} activeDot={{r: 6}} />
+                      <Line type="monotone" dataKey="previousRate" name={crateComparisonName} stroke="#fbcfe8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                   </LineChart>
+                 </ResponsiveContainer>
+               </div>
             </div>
 
 
@@ -1144,6 +1542,95 @@ function App() {
                   ) : (
                     <div style={{textAlign: 'center', color: 'var(--text-secondary)', padding: '24px 0'}}>
                        Vui lòng chọn khách hàng trên để xem báo cáo chi tiết tỷ lệ chuyển đổi.
+                    </div>
+                  )}
+               </div>
+            </div>
+
+            {/* Product Conversion Report */}
+            <div className="report-container glass-panel" style={{gridColumn: '1 / -1', padding: '24px', marginBottom: '24px'}}>
+               <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '24px' }}>
+                  <h3 className="chart-title" style={{ margin: 0, color: '#10b981' }}>Báo Cáo Tỷ Lệ Chốt Theo Tên Sản Phẩm</h3>
+                  <div style={{ padding: '6px 16px', display: 'flex', gap: '12px', alignItems: 'center', borderRadius: '24px', background: 'white', border: '1px solid var(--border-glass)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <Filter size={16} color="var(--text-secondary)" />
+                    <input type="date" value={prStartDate} onChange={e=>setPrStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '13px'}} />
+                    <span style={{color: 'var(--text-secondary)'}}>-</span>
+                    <input type="date" value={prEndDate} onChange={e=>setPrEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '13px'}} />
+                  </div>
+               </div>
+
+               <div style={{ border: '1px dashed var(--border-glass)', borderRadius: '12px', padding: '24px', minHeight: '150px' }}>
+                  <div style={{ position: 'relative', marginBottom: selectedProducts.length > 0 ? '24px' : '40px', maxWidth: '300px' }}>
+                     <input 
+                        value={productSearchQuery} 
+                        onChange={e => setProductSearchQuery(e.target.value)}
+                        placeholder="-- Gõ tên sản phẩm tìm kiếm --"
+                        style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'white', outline: 'none', color: 'var(--text-primary)', width: '100%', boxSizing: 'border-box' }}
+                     />
+                     {productSearchQuery && productSearchQuery.trim().length > 0 && (
+                        <ul className="custom-scrollbar" style={{ background: 'white', position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: '250px', overflowY: 'auto', zIndex: 100, padding: 0, margin: '4px 0 0 0', listStyle: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                           {uniqueProducts.filter(p => p.toLowerCase().includes(productSearchQuery.toLowerCase())).length > 0 ? (
+                              uniqueProducts.filter(p => p.toLowerCase().includes(productSearchQuery.toLowerCase())).map(p => {
+                                 const isSelected = selectedProducts.includes(p);
+                                 return (
+                                     <li 
+                                        key={p} 
+                                        onMouseDown={(e) => {
+                                           e.preventDefault();
+                                           if (isSelected) {
+                                              setSelectedProducts(prev => prev.filter(item => item !== p));
+                                           } else {
+                                              setSelectedProducts(prev => [...prev, p]);
+                                           }
+                                        }}
+                                        style={{ padding: '10px 16px', cursor: 'pointer', borderBottom: '1px solid var(--border-glass)', color: 'var(--text-primary)', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '12px' }}
+                                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.05)'}
+                                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                                     >
+                                        <input type="checkbox" checked={isSelected} readOnly style={{ cursor: 'pointer', accentColor: '#10b981' }} />
+                                        {p}
+                                     </li>
+                                 );
+                              })
+                           ) : (
+                              <li style={{ padding: '10px 16px', color: 'var(--text-secondary)', fontSize: '14px' }}>Không tìm thấy sản phẩm...</li>
+                           )}
+                        </ul>
+                     )}
+                  </div>
+
+                  {selectedProductStats.length > 0 ? (
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+                        {selectedProductStats.map(stat => (
+                           <div key={stat.name} style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '16px', borderBottom: '1px dashed var(--border-glass)' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '6px 16px', borderRadius: '16px', fontSize: '13px', fontWeight: 600, border: '1px solid rgba(16, 185, 129, 0.2)', width: 'fit-content' }}>
+                                 - {stat.name}
+                                 <button onClick={() => setSelectedProducts(prev => prev.filter(item => item !== stat.name))} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>&times;</button>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                                 <div className="glass-panel" style={{padding: '16px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
+                                    <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Số lượng Lên Báo Giá</div>
+                                    <div style={{fontSize: '24px', fontWeight: 600, color: '#3b82f6'}}>{stat.qtyBaoGia} <span style={{fontSize: '14px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>sp</span></div>
+                                 </div>
+                                 <div className="glass-panel" style={{padding: '16px', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)'}}>
+                                    <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Số lượng Đã Chốt</div>
+                                    <div style={{fontSize: '24px', fontWeight: 600, color: '#10b981'}}>{stat.qtyDonHang} <span style={{fontSize: '14px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>sp</span></div>
+                                 </div>
+                                 <div className="glass-panel" style={{padding: '16px', background: 'rgba(139, 92, 246, 0.05)', border: '1px solid rgba(139, 92, 246, 0.2)'}}>
+                                    <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Tỷ Lệ Chốt (Mặt hàng)</div>
+                                    <div style={{fontSize: '24px', fontWeight: 600, color: '#8b5cf6'}}>{stat.qtyConversionRate}%</div>
+                                 </div>
+                                 <div className="glass-panel" style={{padding: '16px', background: 'rgba(236, 72, 153, 0.05)', border: '1px solid rgba(236, 72, 153, 0.2)'}}>
+                                    <div style={{color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '8px'}}>Tỷ Lệ Chốt (Phiếu)</div>
+                                    <div style={{fontSize: '24px', fontWeight: 600, color: '#ec4899'}}>{stat.conversionRate}% <span style={{fontSize: '14px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>({stat.donHangCount}/{stat.baoGiaCount})</span></div>
+                                 </div>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  ) : (
+                    <div style={{textAlign: 'center', color: 'var(--text-secondary)', padding: '24px 0'}}>
+                       Vui lòng chọn tên sản phẩm ở phần trên để chạy thống kê.
                     </div>
                   )}
                </div>
