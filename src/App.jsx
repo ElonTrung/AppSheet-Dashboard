@@ -85,6 +85,7 @@ function App() {
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [prStartDate, setPrStartDate] = useState(getLastWeekString());
   const [prEndDate, setPrEndDate] = useState(getTodayString());
+  const [todayOrderDate, setTodayOrderDate] = useState(getTodayString());
   const [dataCTDH, setDataCTDH] = useState([]);
   const [dataCTBG, setDataCTBG] = useState([]);
   const [dataDGC, setDataDGC] = useState([]);
@@ -1091,7 +1092,12 @@ function App() {
   };
 
   const todaysOrdersData = useMemo(() => {
-     const todayOrders = dataDH.filter(row => isDateToday(getRowDateStr(row)));
+     const todayOrders = dataDH.filter(row => {
+         const d = parseAppSheetDate(getRowDateStr(row));
+         if (!d || isNaN(d)) return false;
+         const selD = new Date(todayOrderDate);
+         return d.getDate() === selD.getDate() && d.getMonth() === selD.getMonth() && d.getFullYear() === selD.getFullYear();
+     });
      
      const quoteDateMap = {};
      dataBG.forEach(b => {
@@ -1114,14 +1120,17 @@ function App() {
              waitDays = diffDays >= 0 ? diffDays : 0;
          }
 
+         const tongTien = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || 0);
+
          return {
              so_don_hang,
              bgDateStr,
              dhDateStr: dhDate ? `${String(dhDate.getDate()).padStart(2,'0')}/${String(dhDate.getMonth()+1).padStart(2,'0')}/${dhDate.getFullYear()}` : (dhDateStr || "N/A"),
-             waitDays
+             waitDays,
+             tongTien
          };
      });
-  }, [dataDH, dataBG]);
+  }, [dataDH, dataBG, todayOrderDate]);
 
 
   return (
@@ -1671,35 +1680,45 @@ function App() {
 
             {/* Today's Orders Table */}
             <div className="report-container glass-panel" style={{gridColumn: '1 / -1', padding: '24px', marginBottom: '24px'}}>
-               <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '24px' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                   <h3 className="chart-title" style={{ margin: 0, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                     <ShoppingCart size={18} color="#3b82f6" /> Danh Sách Đơn Hàng Hôm Nay
+                     <ShoppingCart size={18} color="#3b82f6" /> Danh Sách Đơn Hàng (Theo Ngày)
                   </h3>
+                  <div style={{ padding: '6px 16px', display: 'flex', gap: '12px', alignItems: 'center', borderRadius: '24px', background: 'white', border: '1px solid var(--border-glass)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <Filter size={16} color="var(--text-secondary)" />
+                    <input type="date" value={todayOrderDate} onChange={e=>setTodayOrderDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '13px'}} />
+                  </div>
                </div>
                
                <div style={{ border: '1px dashed var(--border-glass)', borderRadius: '12px', padding: '16px', overflowX: 'auto' }}>
                  <table className="data-table" style={{ width: '100%' }}>
                    <thead>
                      <tr>
+                       <th style={{width: '60px', textAlign: 'center'}}>STT</th>
                        <th>Số Đơn Hàng</th>
                        <th>Ngày Báo Giá</th>
                        <th style={{textAlign: 'center'}}>Số Ngày Chờ Chốt Đơn</th>
+                       <th style={{textAlign: 'right'}}>Tổng Tiền Chưa VAT</th>
                      </tr>
                    </thead>
                    <tbody>
                      {todaysOrdersData.length > 0 ? (
                         todaysOrdersData.map((order, i) => (
                            <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
+                             <td style={{padding: '12px 16px', textAlign: 'center', color: 'var(--text-secondary)'}}>{i + 1}</td>
                              <td style={{padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)'}}>{order.so_don_hang}</td>
                              <td style={{padding: '12px 16px', color: 'var(--text-secondary)'}}>{order.bgDateStr}</td>
                              <td style={{padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', color: order.waitDays !== "N/A" ? (order.waitDays > 3 ? '#ef4444' : '#10b981') : 'var(--text-secondary)'}}>
                                {order.waitDays !== "N/A" ? `${order.waitDays} ngày` : "-"}
                              </td>
+                             <td style={{padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#f59e0b'}}>
+                               {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.tongTien)}
+                             </td>
                            </tr>
                         ))
                      ) : (
                         <tr>
-                           <td colSpan="3" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>
+                           <td colSpan="5" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>
                               Chưa có đơn chốt nào trong hôm nay.
                            </td>
                         </tr>
