@@ -94,6 +94,9 @@ function App() {
 
   const [profitPage, setProfitPage] = useState(1);
   const [misaPage, setMisaPage] = useState(1);
+  const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
+  const [historyStartDate, setHistoryStartDate] = useState('');
+  const [historyEndDate, setHistoryEndDate] = useState('');
   const itemsPerPage = 50;
 
   useEffect(() => { setProfitPage(1); }, [startDate, endDate]);
@@ -1091,6 +1094,50 @@ function App() {
     return null;
   };
 
+  const customerHistoryData = useMemo(() => {
+     if (!selectedHistoryCustomer) return [];
+     
+     const customerOrders = dataDH.filter(row => String(getCustomerName(row)).trim() === selectedHistoryCustomer);
+     const quoteDateMap = {};
+     dataBG.forEach(b => {
+         const id = String(b.So_bao_gia || b.id || b.ID || "").trim();
+         if (id) quoteDateMap[id] = parseAppSheetDate(getRowDateStr(b));
+     });
+
+     const rawData = customerOrders.map(row => {
+         const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
+         const dhDateStr = getRowDateStr(row);
+         const dhDate = parseAppSheetDate(dhDateStr);
+         
+         const bgDate = quoteDateMap[so_don_hang];
+         const bgDateStr = bgDate ? `${String(bgDate.getDate()).padStart(2,'0')}/${String(bgDate.getMonth()+1).padStart(2,'0')}/${bgDate.getFullYear()}` : "N/A";
+         
+         let waitDays = "N/A";
+         if (dhDate && bgDate && !isNaN(dhDate) && !isNaN(bgDate)) {
+             const diffTime = dhDate.getTime() - bgDate.getTime();
+             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+             waitDays = diffDays >= 0 ? diffDays : 0;
+         }
+         const tongTien = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || 0);
+
+         return {
+             so_don_hang, bgDateStr, dhDateStr: dhDate ? `${String(dhDate.getDate()).padStart(2,'0')}/${String(dhDate.getMonth()+1).padStart(2,'0')}/${dhDate.getFullYear()}` : (dhDateStr || "N/A"),
+             waitDays, tongTien, dateForSort: dhDate ? dhDate.getTime() : 0, dhDate
+         };
+     });
+
+     return rawData.filter(item => {
+        if (!item.dhDate || isNaN(item.dhDate.getTime())) return true;
+        const start = historyStartDate ? new Date(historyStartDate).setHours(0,0,0,0) : null;
+        const end = historyEndDate ? new Date(historyEndDate).setHours(23,59,59,999) : null;
+        const t = item.dhDate.getTime();
+        if (start && end) return t >= start && t <= end;
+        if (start) return t >= start;
+        if (end) return t <= end;
+        return true;
+     }).sort((a,b) => b.dateForSort - a.dateForSort);
+  }, [dataDH, dataBG, selectedHistoryCustomer, historyStartDate, historyEndDate]);
+
   const todaysOrdersData = useMemo(() => {
      const todayOrders = dataDH.filter(row => {
          const d = parseAppSheetDate(getRowDateStr(row));
@@ -1127,7 +1174,8 @@ function App() {
              bgDateStr,
              dhDateStr: dhDate ? `${String(dhDate.getDate()).padStart(2,'0')}/${String(dhDate.getMonth()+1).padStart(2,'0')}/${dhDate.getFullYear()}` : (dhDateStr || "N/A"),
              waitDays,
-             tongTien
+             tongTien,
+             khach_hang: String(getCustomerName(row)).trim()
          };
      });
   }, [dataDH, dataBG, todayOrderDate]);
@@ -1289,7 +1337,13 @@ function App() {
                   <tbody>
                     {filteredProfitData.slice((profitPage - 1) * itemsPerPage, profitPage * itemsPerPage).map((r, i) => (
                        <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
-                         <td style={{padding: '12px 16px', fontWeight: 600}}>{r.so_don_hang}</td>
+                         <td 
+                            style={{padding: '12px 16px', fontWeight: 600, color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline'}}
+                            onClick={() => setSelectedHistoryCustomer(r.khach_hang)}
+                            title={`Xem lịch sử khách hàng ${r.khach_hang}`}
+                         >
+                            {r.so_don_hang}
+                         </td>
                          <td style={{padding: '12px 16px'}}>{r.dateStr}</td>
                          <td style={{padding: '12px 16px'}}>{r.khach_hang}</td>
                          <td style={{padding: '12px 16px', textAlign: 'right', color: '#10b981'}}>{new Intl.NumberFormat('vi-VN').format(r.doanhThu)}</td>
@@ -1706,7 +1760,13 @@ function App() {
                         todaysOrdersData.map((order, i) => (
                            <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
                              <td style={{padding: '12px 16px', textAlign: 'center', color: 'var(--text-secondary)'}}>{i + 1}</td>
-                             <td style={{padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)'}}>{order.so_don_hang}</td>
+                             <td 
+                               style={{padding: '12px 16px', fontWeight: 600, color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline'}} 
+                               onClick={() => setSelectedHistoryCustomer(order.khach_hang)}
+                               title={`Xem lịch sử khách hàng ${order.khach_hang}`}
+                             >
+                               {order.so_don_hang}
+                             </td>
                              <td style={{padding: '12px 16px', color: 'var(--text-secondary)'}}>{order.bgDateStr}</td>
                              <td style={{padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', color: order.waitDays !== "N/A" ? (order.waitDays > 3 ? '#ef4444' : '#10b981') : 'var(--text-secondary)'}}>
                                {order.waitDays !== "N/A" ? `${order.waitDays} ngày` : "-"}
@@ -1841,6 +1901,79 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* Customer History Modal */}
+      {selectedHistoryCustomer && (
+         <div 
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '24px' }}
+            onClick={() => { setSelectedHistoryCustomer(null); setHistoryStartDate(''); setHistoryEndDate(''); }}
+         >
+            <div 
+               className="glass-panel custom-scrollbar" 
+               style={{ background: 'white', borderRadius: '16px', width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden' }}
+               onClick={(e) => e.stopPropagation()}
+            >
+               <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-glass)', flexWrap: 'wrap', gap: '16px' }}>
+                  <h3 style={{ margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                     <FileText size={20} color="#3b82f6" /> Lịch sử đơn hàng: {selectedHistoryCustomer}
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div className="glass-panel" style={{ padding: '6px 12px', display: 'flex', gap: '8px', alignItems: 'center', borderRadius: '16px', margin: 0, background: 'white' }}>
+                          <Filter size={14} color="var(--text-secondary)" />
+                          <input type="date" value={historyStartDate} onChange={e=>setHistoryStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '13px'}} />
+                          <span style={{color: 'var(--text-secondary)'}}>-</span>
+                          <input type="date" value={historyEndDate} onChange={e=>setHistoryEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '13px'}} />
+                      </div>
+                      <button onClick={() => { setSelectedHistoryCustomer(null); setHistoryStartDate(''); setHistoryEndDate(''); }} style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
+                  </div>
+               </div>
+               
+               <div style={{ display: 'flex', gap: '16px', padding: '20px 24px', background: 'rgba(59, 130, 246, 0.05)', borderBottom: '1px solid var(--border-glass)', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '150px' }}>
+                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tổng số đơn chốt</div>
+                     <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#3b82f6' }}>{customerHistoryData.length} đơn</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: '150px' }}>
+                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tổng doanh thu (Chưa VAT)</div>
+                     <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#10b981' }}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(customerHistoryData.reduce((sum, curr) => sum + curr.tongTien, 0))}</div>
+                  </div>
+               </div>
+
+               <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                  <table className="data-table" style={{ width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th style={{width: '60px', textAlign: 'center'}}>STT</th>
+                        <th>Mã Đơn Hàng</th>
+                        <th>Ngày Báo Giá</th>
+                        <th>Ngày Đơn Hàng</th>
+                        <th style={{textAlign: 'center'}}>Ngày Chờ Chốt</th>
+                        <th style={{textAlign: 'right'}}>Số Tiền</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerHistoryData.length > 0 ? customerHistoryData.map((order, idx) => (
+                         <tr key={idx} style={{ borderBottom: '1px solid var(--border-glass)' }}>
+                           <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{idx + 1}</td>
+                           <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>{order.so_don_hang}</td>
+                           <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{order.bgDateStr}</td>
+                           <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{order.dhDateStr}</td>
+                           <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', color: order.waitDays !== "N/A" ? (order.waitDays > 3 ? '#ef4444' : '#10b981') : 'var(--text-secondary)' }}>
+                              {order.waitDays !== "N/A" ? `${order.waitDays} ngày` : "-"}
+                           </td>
+                           <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#f59e0b' }}>
+                              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.tongTien)}
+                           </td>
+                         </tr>
+                      )) : (
+                         <tr><td colSpan="6" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>Không có lịch sử đơn hàng.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+      )}
     </div>
   );
 }
