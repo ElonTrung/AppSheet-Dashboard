@@ -104,6 +104,12 @@ function App() {
   const [historyEndDate, setHistoryEndDate] = useState(getTodayString());
   const itemsPerPage = 50;
 
+  const openCustomerHistory = (customerName) => {
+      setSelectedHistoryCustomer(customerName);
+      setHistoryStartDate(getStartOfYearString());
+      setHistoryEndDate(getTodayString());
+  };
+
   useEffect(() => { setProfitPage(1); }, [startDate, endDate]);
 
   const [misaPurchaseData, setMisaPurchaseData] = useState([]);
@@ -1344,7 +1350,7 @@ function App() {
                        <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
                          <td 
                             style={{padding: '12px 16px', fontWeight: 600, color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline'}}
-                            onClick={() => setSelectedHistoryCustomer(r.khach_hang)}
+                            onClick={() => openCustomerHistory(r.khach_hang)}
                             title={`Xem lịch sử khách hàng ${r.khach_hang}`}
                          >
                             {r.so_don_hang}
@@ -1767,7 +1773,7 @@ function App() {
                              <td style={{padding: '12px 16px', textAlign: 'center', color: 'var(--text-secondary)'}}>{i + 1}</td>
                              <td 
                                style={{padding: '12px 16px', fontWeight: 600, color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline'}} 
-                               onClick={() => setSelectedHistoryCustomer(order.khach_hang)}
+                               onClick={() => openCustomerHistory(order.khach_hang)}
                                title={`Xem lịch sử khách hàng ${order.khach_hang}`}
                              >
                                {order.so_don_hang}
