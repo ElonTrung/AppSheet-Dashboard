@@ -100,6 +100,16 @@ function App() {
      return `${new Date().getFullYear()}-01-01`;
   };
 
+  const [revenueStartDate, setRevenueStartDate] = useState(getStartOfYearString());
+  const [revenueEndDate, setRevenueEndDate] = useState(getTodayString());
+  const [revenueThreshold, setRevenueThreshold] = useState(0);
+  const [orderCountThreshold, setOrderCountThreshold] = useState(1);
+  const [revenuePage, setRevenuePage] = useState(1);
+
+  const [quotesStartDate, setQuotesStartDate] = useState(getStartOfYearString());
+  const [quotesEndDate, setQuotesEndDate] = useState(getTodayString());
+  const [quotesPage, setQuotesPage] = useState(1);
+
   const [historyStartDate, setHistoryStartDate] = useState(getStartOfYearString());
   const [historyEndDate, setHistoryEndDate] = useState(getTodayString());
   const [historyModalTab, setHistoryModalTab] = useState('orders');
@@ -1179,6 +1189,101 @@ function App() {
      return Object.values(prodMap).sort((a,b) => b.tongtien - a.tongtien);
   }, [customerHistoryData, dataCTDH, selectedHistoryCustomer]);
 
+  const topRevenueData = useMemo(() => {
+     const start = revenueStartDate ? new Date(revenueStartDate).setHours(0,0,0,0) : 0;
+     const end = revenueEndDate ? new Date(revenueEndDate).setHours(23, 59, 59, 999) : Infinity;
+
+     const customerMap = {};
+     dataDH.forEach(row => {
+        const dateStr = getRowDateStr(row);
+        const d = parseAppSheetDate(dateStr);
+        if (!d || isNaN(d.getTime())) return;
+        if (d.getTime() >= start && d.getTime() <= end) {
+           const name = String(getCustomerName(row)).trim();
+           if (!name || name === 'Unknown') return;
+           
+           const coVAT = getSaleValue(row);
+           const chuaVAT = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || coVAT / 1.08 || 0);
+           
+           if (!customerMap[name]) {
+               customerMap[name] = { khach_hang: name, coVAT: 0, chuaVAT: 0, count: 0, orderIds: [] };
+           }
+           customerMap[name].coVAT += coVAT;
+           customerMap[name].chuaVAT += chuaVAT;
+           customerMap[name].count += 1;
+           const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
+           customerMap[name].orderIds.push(so_don_hang);
+        }
+     });
+
+     const filtered = Object.values(customerMap).filter(c => c.coVAT >= revenueThreshold && c.count >= orderCountThreshold);
+     return filtered.sort((a,b) => b.coVAT - a.coVAT);
+  }, [dataDH, revenueStartDate, revenueEndDate, revenueThreshold, orderCountThreshold]);
+
+  const quotesAppStatistics = useMemo(() => {
+     const start = quotesStartDate ? new Date(quotesStartDate).setHours(0,0,0,0) : 0;
+     const end = quotesEndDate ? new Date(quotesEndDate).setHours(23, 59, 59, 999) : Infinity;
+
+     const orderQuoteIds = new Set();
+     dataDH.forEach(r => {
+        const refs = [r.So_bao_gia, r.So_don_hang, r.DH_Ref, r.don_hang_id, r.id, r.ID, r.Id];
+        refs.forEach(ref => {
+           if (ref) orderQuoteIds.add(String(ref).trim());
+        });
+     });
+
+     const bgRecords = [];
+     const customerMap = {};
+
+     dataBG.forEach(row => {
+        const dStr = getRowDateStr(row);
+        const d = parseAppSheetDate(dStr);
+        if (!d || isNaN(d.getTime())) return;
+        if (d.getTime() >= start && d.getTime() <= end) {
+           const id = String(row.So_bao_gia || row.id || row.ID || row.Id || "N/A").trim();
+           const khach_hang = String(getCustomerName(row)).trim();
+           const dateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+           // We try to reuse getSaleValue or extract directly
+           const value = getSaleValue(row);
+
+           const isConverted = orderQuoteIds.has(id);
+           
+           bgRecords.push({ id, khach_hang, dateStr, value, isConverted, originalDate: d });
+
+           if (!customerMap[khach_hang]) {
+               customerMap[khach_hang] = {
+                  khach_hang,
+                  quotesCount: 0,
+                  convertedCount: 0
+               };
+           }
+           customerMap[khach_hang].quotesCount += 1;
+           if (isConverted) customerMap[khach_hang].convertedCount += 1;
+        }
+     });
+
+     bgRecords.sort((a,b) => b.originalDate - a.originalDate);
+
+     const totalQuotes = bgRecords.length;
+     const totalConverted = bgRecords.filter(r => r.isConverted).length;
+     
+     let unactivatedCustomersCount = 0;
+     for (const c in customerMap) {
+         if (customerMap[c].convertedCount === 0) {
+             unactivatedCustomersCount += 1;
+         }
+     }
+
+     return {
+        bgRecords,
+        totalQuotes,
+        totalConverted,
+        totalCustomers: Object.keys(customerMap).length,
+        unactivatedCustomersCount
+     };
+
+  }, [dataDH, dataBG, quotesStartDate, quotesEndDate]);
+
   const todaysOrdersData = useMemo(() => {
      const todayOrders = dataDH.filter(row => {
          const d = parseAppSheetDate(getRowDateStr(row));
@@ -1237,10 +1342,10 @@ function App() {
           <button className={`nav-item ${activeTab === 'profit' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'profit' ? '3px solid var(--accent-blue)' : 'none', marginTop: '8px'}} onClick={() => setActiveTab('profit')}>
             <DollarSign size={20} /> Lợi Nhuận Đơn Hàng
           </button>
-          <button className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', marginTop: '8px'}}>
+          <button className={`nav-item ${activeTab === 'quotes' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'quotes' ? '3px solid var(--accent-blue)' : 'none', marginTop: '8px'}} onClick={() => setActiveTab('quotes')}>
             <FileText size={20} /> Báo Giá
           </button>
-          <button className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left'}}>
+          <button className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', marginTop: '8px'}}>
             <ShoppingCart size={20} /> Đơn Bán Hàng
           </button>
           <button className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left'}}>
@@ -1251,6 +1356,9 @@ function App() {
           </button>
           <button className={`nav-item ${activeTab === 'misa' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'misa' ? '3px solid var(--accent-blue)' : 'none', marginTop: '8px'}} onClick={() => setActiveTab('misa')}>
             <Package size={20} /> Misa Mua Hàng
+          </button>
+          <button className={`nav-item ${activeTab === 'top-revenue' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'top-revenue' ? '3px solid var(--accent-blue)' : 'none', marginTop: '8px'}} onClick={() => setActiveTab('top-revenue')}>
+            <TrendingUp size={20} /> Top Doanh Thu
           </button>
           <button className="nav-item" style={{ marginTop: 'auto', background: 'none', border: 'none', width: '100%', textAlign: 'left' }}>
             <Settings size={20} /> Cài đặt
@@ -1405,6 +1513,160 @@ function App() {
                       <button onClick={() => setProfitPage(p => Math.max(1, p - 1))} disabled={profitPage === 1} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: profitPage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Trước</button>
                       <span style={{color: 'var(--text-secondary)'}}>Trang {profitPage} / {Math.ceil(filteredProfitData.length / itemsPerPage)}</span>
                       <button onClick={() => setProfitPage(p => Math.min(Math.ceil(filteredProfitData.length / itemsPerPage), p + 1))} disabled={profitPage >= Math.ceil(filteredProfitData.length / itemsPerPage)} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: profitPage >= Math.ceil(filteredProfitData.length / itemsPerPage) ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Sau</button>
+                   </div>
+                )}
+             </div>
+          </div>
+        ) : activeTab === 'top-revenue' ? (
+          <div className="top-revenue-view" style={{padding: '24px'}}>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                <h2 style={{margin: 0}}>Thống Kê Khách Hàng</h2>
+                <div className="glass-panel" style={{ padding: '8px 16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <TrendingUp size={18} color="var(--text-secondary)" />
+                  <span style={{color: 'var(--text-secondary)', fontSize: '14px'}}>Số lượng đơn ≥</span>
+                  <input type="number" min="1" value={orderCountThreshold} onChange={e=>setOrderCountThreshold(Number(e.target.value))} style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '4px', padding: '4px 8px', color: 'var(--text-primary)', outline: 'none', width: '60px'}} />
+                  <div style={{width: '1px', height: '24px', background: 'var(--border-glass)', margin: '0 4px'}}></div>
+                  <span style={{color: 'var(--text-secondary)', fontSize: '14px'}}>Doanh thu ≥</span>
+                  <input type="number" min="0" step="1000000" value={revenueThreshold} onChange={e=>setRevenueThreshold(Number(e.target.value))} style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '4px', padding: '4px 8px', color: 'var(--text-primary)', outline: 'none', width: '120px'}} />
+                  <div style={{width: '1px', height: '24px', background: 'var(--border-glass)', margin: '0 4px'}}></div>
+                  <input type="date" value={revenueStartDate} onChange={e=>setRevenueStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light'}} />
+                  <span style={{color: 'var(--text-secondary)'}}>-</span>
+                  <input type="date" value={revenueEndDate} onChange={e=>setRevenueEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light'}} />
+                </div>
+             </div>
+
+             <div className="kpi-cards" style={{marginBottom: '24px'}}>
+               <div className="kpi-card glass-panel" style={{border: '1px solid rgba(59, 130, 246, 0.2)'}}>
+                 <div className="kpi-header"><span>Khách Hàng Đạt Mốc</span></div>
+                 <div className="kpi-value" style={{color: '#3b82f6'}}>{topRevenueData.length} <span style={{fontSize: '16px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>khách</span></div>
+               </div>
+               <div className="kpi-card glass-panel" style={{border: '1px solid rgba(16, 185, 129, 0.2)'}}>
+                 <div className="kpi-header"><span>Tổng Doanh Thu (Có VAT)</span></div>
+                 <div className="kpi-value" style={{color: '#10b981'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(topRevenueData.reduce((acc, r) => acc + r.coVAT, 0))}</div>
+               </div>
+               <div className="kpi-card glass-panel" style={{border: '1px solid rgba(245, 158, 11, 0.2)'}}>
+                 <div className="kpi-header"><span>Tổng Doanh Thu (Chưa VAT)</span></div>
+                 <div className="kpi-value" style={{color: '#f59e0b'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(topRevenueData.reduce((acc, r) => acc + r.chuaVAT, 0))}</div>
+               </div>
+             </div>
+
+             <div className="glass-panel" style={{overflowX: 'auto', padding: '24px', minHeight: '400px'}}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{width: '60px', textAlign: 'center'}}>STT</th>
+                      <th>Khách Hàng</th>
+                      <th style={{textAlign: 'center'}}>Số Đơn</th>
+                      <th style={{textAlign: 'right'}}>Doanh Thu (Chưa VAT)</th>
+                      <th style={{textAlign: 'right'}}>Doanh Thu (Có VAT)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topRevenueData.slice((revenuePage - 1) * itemsPerPage, revenuePage * itemsPerPage).map((r, i) => (
+                       <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
+                         <td style={{padding: '12px 16px', textAlign: 'center', color: 'var(--text-secondary)'}}>{(revenuePage - 1) * itemsPerPage + i + 1}</td>
+                         <td 
+                            style={{padding: '12px 16px', fontWeight: 600, color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline'}}
+                            onClick={() => openCustomerHistory(r.khach_hang)}
+                            title={`Xem lịch sử khách hàng ${r.khach_hang}`}
+                         >
+                            {r.khach_hang}
+                         </td>
+                         <td style={{padding: '12px 16px', textAlign: 'center', fontWeight: '500'}}>{r.count} đh</td>
+                         <td style={{padding: '12px 16px', textAlign: 'right', color: '#f59e0b'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(r.chuaVAT)}</td>
+                         <td style={{padding: '12px 16px', textAlign: 'right', fontWeight: 'bold', color: '#10b981'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(r.coVAT)}</td>
+                       </tr>
+                    ))}
+                    {topRevenueData.length === 0 && (
+                       <tr><td colSpan="5" style={{textAlign: 'center', padding: '24px'}}>Không có khách hàng nào đạt mức doanh thu này trong khoảng thời gian đã chọn.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {topRevenueData.length > itemsPerPage && (
+                   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', gap: '16px', borderTop: '1px solid var(--border-glass)' }}>
+                      <button onClick={() => setRevenuePage(p => Math.max(1, p - 1))} disabled={revenuePage === 1} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: revenuePage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Trước</button>
+                      <span style={{color: 'var(--text-secondary)'}}>Trang {revenuePage} / {Math.ceil(topRevenueData.length / itemsPerPage)}</span>
+                      <button onClick={() => setRevenuePage(p => Math.min(Math.ceil(topRevenueData.length / itemsPerPage), p + 1))} disabled={revenuePage >= Math.ceil(topRevenueData.length / itemsPerPage)} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: revenuePage >= Math.ceil(topRevenueData.length / itemsPerPage) ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Sau</button>
+                   </div>
+                )}
+             </div>
+          </div>
+        ) : activeTab === 'quotes' ? (
+          <div className="quotes-view" style={{padding: '24px'}}>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                <h2 style={{margin: 0}}>Thống Kê Báo Giá</h2>
+                <div className="glass-panel" style={{ padding: '8px 16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <FileText size={18} color="var(--text-secondary)" />
+                  <input type="date" value={quotesStartDate} onChange={e=>setQuotesStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light'}} />
+                  <span style={{color: 'var(--text-secondary)'}}>-</span>
+                  <input type="date" value={quotesEndDate} onChange={e=>setQuotesEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light'}} />
+                </div>
+             </div>
+
+             <div className="kpi-cards" style={{marginBottom: '24px'}}>
+               <div className="kpi-card glass-panel" style={{border: '1px solid rgba(59, 130, 246, 0.2)'}}>
+                 <div className="kpi-header"><span>Tổng Số Báo Giá</span></div>
+                 <div className="kpi-value" style={{color: '#3b82f6'}}>{quotesAppStatistics.totalQuotes}</div>
+               </div>
+               <div className="kpi-card glass-panel" style={{border: '1px solid rgba(16, 185, 129, 0.2)'}}>
+                 <div className="kpi-header"><span>Báo Giá Đã Chốt Đơn</span></div>
+                 <div className="kpi-value" style={{color: '#10b981'}}>{quotesAppStatistics.totalConverted}</div>
+               </div>
+               <div className="kpi-card glass-panel" style={{border: '1px solid rgba(139, 92, 246, 0.2)'}}>
+                 <div className="kpi-header"><span>KH Nhận Báo Giá</span></div>
+                 <div className="kpi-value" style={{color: '#8b5cf6'}}>{quotesAppStatistics.totalCustomers} <span style={{fontSize: '16px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>người</span></div>
+               </div>
+               <div className="kpi-card glass-panel" style={{border: '1px solid rgba(239, 68, 68, 0.2)'}}>
+                 <div className="kpi-header"><span>KH Nhận Nhưng Chưa Chốt</span></div>
+                 <div className="kpi-value" style={{color: '#ef4444'}}>{quotesAppStatistics.unactivatedCustomersCount} <span style={{fontSize: '16px', fontWeight: 'normal', color: 'var(--text-secondary)'}}>người</span></div>
+               </div>
+             </div>
+
+             <div className="glass-panel" style={{overflowX: 'auto', padding: '24px', minHeight: '400px'}}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Ngày Phát Hành</th>
+                      <th>Mã Báo Giá</th>
+                      <th>Khách Hàng</th>
+                      <th style={{textAlign: 'right'}}>Giá Trị Báo Giá</th>
+                      <th style={{textAlign: 'center'}}>Trạng Thái</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quotesAppStatistics.bgRecords.slice((quotesPage - 1) * itemsPerPage, quotesPage * itemsPerPage).map((r, i) => (
+                       <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
+                         <td style={{padding: '12px 16px'}}>{r.dateStr}</td>
+                         <td style={{padding: '12px 16px', fontWeight: 'bold'}}>{r.id}</td>
+                         <td 
+                            style={{padding: '12px 16px', fontWeight: 600, color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline'}}
+                            onClick={() => openCustomerHistory(r.khach_hang)}
+                            title={`Xem lịch sử khách hàng ${r.khach_hang}`}
+                         >
+                            {r.khach_hang}
+                         </td>
+                         <td style={{padding: '12px 16px', textAlign: 'right'}}>{r.value > 0 ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(r.value) : 'N/A'}</td>
+                         <td style={{padding: '12px 16px', textAlign: 'center'}}>
+                            {r.isConverted ? (
+                               <span style={{background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Đã chốt đơn</span>
+                            ) : (
+                               <span style={{background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Chưa chốt đơn</span>
+                            )}
+                         </td>
+                       </tr>
+                    ))}
+                    {quotesAppStatistics.bgRecords.length === 0 && (
+                       <tr><td colSpan="5" style={{textAlign: 'center', padding: '24px'}}>Không có phiếu báo giá nào trong thời gian này.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {quotesAppStatistics.bgRecords.length > itemsPerPage && (
+                   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', gap: '16px', borderTop: '1px solid var(--border-glass)' }}>
+                      <button onClick={() => setQuotesPage(p => Math.max(1, p - 1))} disabled={quotesPage === 1} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: quotesPage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Trước</button>
+                      <span style={{color: 'var(--text-secondary)'}}>Trang {quotesPage} / {Math.ceil(quotesAppStatistics.bgRecords.length / itemsPerPage)}</span>
+                      <button onClick={() => setQuotesPage(p => Math.min(Math.ceil(quotesAppStatistics.bgRecords.length / itemsPerPage), p + 1))} disabled={quotesPage >= Math.ceil(quotesAppStatistics.bgRecords.length / itemsPerPage)} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: quotesPage >= Math.ceil(quotesAppStatistics.bgRecords.length / itemsPerPage) ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Sau</button>
                    </div>
                 )}
              </div>
