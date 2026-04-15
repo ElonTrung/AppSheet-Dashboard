@@ -95,8 +95,13 @@ function App() {
   const [profitPage, setProfitPage] = useState(1);
   const [misaPage, setMisaPage] = useState(1);
   const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState(null);
-  const [historyStartDate, setHistoryStartDate] = useState('');
-  const [historyEndDate, setHistoryEndDate] = useState('');
+
+  const getStartOfYearString = () => {
+     return `${new Date().getFullYear()}-01-01`;
+  };
+
+  const [historyStartDate, setHistoryStartDate] = useState(getStartOfYearString());
+  const [historyEndDate, setHistoryEndDate] = useState(getTodayString());
   const itemsPerPage = 50;
 
   useEffect(() => { setProfitPage(1); }, [startDate, endDate]);
@@ -1924,7 +1929,7 @@ function App() {
                           <span style={{color: 'var(--text-secondary)'}}>-</span>
                           <input type="date" value={historyEndDate} onChange={e=>setHistoryEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', colorScheme: 'light', fontSize: '13px'}} />
                       </div>
-                      <button onClick={() => { setSelectedHistoryCustomer(null); setHistoryStartDate(''); setHistoryEndDate(''); }} style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
+                      <button onClick={() => { setSelectedHistoryCustomer(null); setHistoryStartDate(getStartOfYearString()); setHistoryEndDate(getTodayString()); }} style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
                   </div>
                </div>
                
