@@ -1161,10 +1161,11 @@ function App() {
      dataCTDH.forEach(item => {
         const orderId = String(item.So_don_hang || item.So_bao_gia || item.So_mua_hang || item.id || "").trim();
         if (validOrderIds.has(orderId)) {
-           const tenSP = String(item.Ten_san_pham || item.Ten_hang_hoa || item.San_pham || item.Product || "Unknown").trim();
+           const tenSP = String(item.Ten_san_pham || item.Ten_sanpham || item.Ten_hang_hoa || item.San_pham || item.Product || "Unknown").trim();
            const soluong = Number(item.So_luong || item.soluong || item.Quantity || 0);
-           const dongia = Number(item.Don_gia || item.Gia_ban || item.Gia || 0);
-           const ttChuaVAT = Number(item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT || item.Thanh_tien || (soluong * dongia) || 0);
+           let dongia = Number(item.Don_gia || item.Gia_ban || item.Gia || 0);
+           const ttChuaVAT = Number(item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT || item.Thanh_tien || item.Tong_tien || item.Total || (soluong * dongia) || 0);
+           if (dongia === 0 && soluong > 0) dongia = ttChuaVAT / soluong;
            
            const key = `${tenSP}|${dongia}`;
            if (!prodMap[key]) {
@@ -2028,14 +2029,22 @@ function App() {
                                              </tr>
                                           </thead>
                                           <tbody>
-                                             {dataCTDH.filter(item => String(item.So_don_hang || item.So_bao_gia || item.So_mua_hang || item.id || "").trim() === order.so_don_hang).map((item, i) => (
-                                                <tr key={i}>
-                                                   <td style={{ padding: '6px 0', borderBottom: '1px dashed var(--border-glass)', wordWrap: 'break-word' }}>{item.Ten_san_pham || item.Ten_hang_hoa || item.San_pham || item.Product || "Unknown"}</td>
-                                                   <td style={{ padding: '6px 0', textAlign: 'center', borderBottom: '1px dashed var(--border-glass)', fontWeight: 'bold' }}>{item.So_luong || item.soluong || item.Quantity || 1}</td>
-                                                   <td style={{ padding: '6px 0', textAlign: 'right', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(Number(item.Don_gia || item.Gia || 0))}</td>
-                                                   <td style={{ padding: '6px 0', textAlign: 'right', fontWeight: 'bold', color: '#10b981', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(Number(item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT || item.Thanh_tien || item.Total || 0))}</td>
-                                                </tr>
-                                             ))}
+                                             {dataCTDH.filter(item => String(item.So_don_hang || item.So_bao_gia || item.So_mua_hang || item.id || "").trim() === order.so_don_hang).map((item, i) => {
+                                                const tenSP = String(item.Ten_san_pham || item.Ten_sanpham || item.Ten_hang_hoa || item.San_pham || item.Product || "Unknown").trim();
+                                                const soluong = Number(item.So_luong || item.soluong || item.Quantity || 1);
+                                                let dongia = Number(item.Don_gia || item.Gia_ban || item.Gia || 0);
+                                                const ttChuaVAT = Number(item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT || item.Thanh_tien || item.Tong_tien || item.Total || (soluong * dongia) || 0);
+                                                if (dongia === 0 && soluong > 0) dongia = ttChuaVAT / soluong;
+
+                                                return (
+                                                   <tr key={i}>
+                                                      <td style={{ padding: '6px 0', borderBottom: '1px dashed var(--border-glass)', wordWrap: 'break-word' }}>{tenSP}</td>
+                                                      <td style={{ padding: '6px 0', textAlign: 'center', borderBottom: '1px dashed var(--border-glass)', fontWeight: 'bold' }}>{soluong}</td>
+                                                      <td style={{ padding: '6px 0', textAlign: 'right', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(dongia)}</td>
+                                                      <td style={{ padding: '6px 0', textAlign: 'right', fontWeight: 'bold', color: '#10b981', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(ttChuaVAT)}</td>
+                                                   </tr>
+                                                );
+                                             })}
                                              {dataCTDH.filter(item => String(item.So_don_hang || item.So_bao_gia || item.So_mua_hang || item.id || "").trim() === order.so_don_hang).length === 0 && (
                                                 <tr><td colSpan={4} style={{ textAlign: 'center', padding: '12px 0', color: 'var(--text-secondary)' }}>Không tìm thấy chi tiết!</td></tr>
                                              )}
