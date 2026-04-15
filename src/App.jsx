@@ -102,12 +102,15 @@ function App() {
 
   const [historyStartDate, setHistoryStartDate] = useState(getStartOfYearString());
   const [historyEndDate, setHistoryEndDate] = useState(getTodayString());
+  const [historyModalTab, setHistoryModalTab] = useState('orders');
+  const [hoveredHistoryOrder, setHoveredHistoryOrder] = useState(null);
   const itemsPerPage = 50;
 
   const openCustomerHistory = (customerName) => {
       setSelectedHistoryCustomer(customerName);
       setHistoryStartDate(getStartOfYearString());
       setHistoryEndDate(getTodayString());
+      setHistoryModalTab('orders');
   };
 
   useEffect(() => { setProfitPage(1); }, [startDate, endDate]);
@@ -1149,6 +1152,32 @@ function App() {
      }).sort((a,b) => b.dateForSort - a.dateForSort);
   }, [dataDH, dataBG, selectedHistoryCustomer, historyStartDate, historyEndDate]);
 
+  const customerProductsData = useMemo(() => {
+     if (!selectedHistoryCustomer) return [];
+     
+     const validOrderIds = new Set(customerHistoryData.map(o => o.so_don_hang));
+     
+     const prodMap = {};
+     dataCTDH.forEach(item => {
+        const orderId = String(item.So_don_hang || item.So_bao_gia || item.So_mua_hang || item.id || "").trim();
+        if (validOrderIds.has(orderId)) {
+           const tenSP = String(item.Ten_san_pham || item.Ten_hang_hoa || item.San_pham || item.Product || "Unknown").trim();
+           const soluong = Number(item.So_luong || item.soluong || item.Quantity || 0);
+           const dongia = Number(item.Don_gia || item.Gia_ban || item.Gia || 0);
+           const ttChuaVAT = Number(item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT || item.Thanh_tien || (soluong * dongia) || 0);
+           
+           const key = `${tenSP}|${dongia}`;
+           if (!prodMap[key]) {
+               prodMap[key] = { tenSP, dongia, soluong: 0, tongtien: 0 };
+           }
+           prodMap[key].soluong += soluong;
+           prodMap[key].tongtien += ttChuaVAT;
+        }
+     });
+
+     return Object.values(prodMap).sort((a,b) => b.tongtien - a.tongtien);
+  }, [customerHistoryData, dataCTDH, selectedHistoryCustomer]);
+
   const todaysOrdersData = useMemo(() => {
      const todayOrders = dataDH.filter(row => {
          const d = parseAppSheetDate(getRowDateStr(row));
@@ -1945,42 +1974,118 @@ function App() {
                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#3b82f6' }}>{customerHistoryData.length} đơn</div>
                   </div>
                   <div style={{ flex: 1, minWidth: '150px' }}>
+                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tổng số sản phẩm</div>
+                     <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#f59e0b' }}>{customerProductsData.reduce((s, c) => s + c.soluong, 0)} sp</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: '150px' }}>
                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tổng doanh thu (Chưa VAT)</div>
                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#10b981' }}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(customerHistoryData.reduce((sum, curr) => sum + curr.tongTien, 0))}</div>
                   </div>
                </div>
+               
+               <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)', background: 'var(--bg-glass)' }}>
+                   <div onClick={() => setHistoryModalTab('orders')} style={{ flex: 1, textAlign: 'center', padding: '12px 24px', cursor: 'pointer', fontWeight: 'bold', borderBottom: historyModalTab === 'orders' ? '2px solid #3b82f6' : 'none', color: historyModalTab === 'orders' ? '#3b82f6' : 'var(--text-secondary)' }}>Lịch Sử Đơn Hàng</div>
+                   <div onClick={() => setHistoryModalTab('products')} style={{ flex: 1, textAlign: 'center', padding: '12px 24px', cursor: 'pointer', fontWeight: 'bold', borderBottom: historyModalTab === 'products' ? '2px solid #3b82f6' : 'none', color: historyModalTab === 'products' ? '#3b82f6' : 'var(--text-secondary)' }}>Sản Phẩm Đã Mua</div>
+               </div>
 
-               <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                  <table className="data-table" style={{ width: '100%' }}>
-                    <thead>
-                      <tr>
-                        <th style={{width: '60px', textAlign: 'center'}}>STT</th>
-                        <th>Mã Đơn Hàng</th>
-                        <th>Ngày Báo Giá</th>
-                        <th>Ngày Đơn Hàng</th>
-                        <th style={{textAlign: 'center'}}>Ngày Chờ Chốt</th>
-                        <th style={{textAlign: 'right'}}>Số Tiền</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customerHistoryData.length > 0 ? customerHistoryData.map((order, idx) => (
-                         <tr key={idx} style={{ borderBottom: '1px solid var(--border-glass)' }}>
-                           <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{idx + 1}</td>
-                           <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>{order.so_don_hang}</td>
-                           <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{order.bgDateStr}</td>
-                           <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{order.dhDateStr}</td>
-                           <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', color: order.waitDays !== "N/A" ? (order.waitDays > 3 ? '#ef4444' : '#10b981') : 'var(--text-secondary)' }}>
-                              {order.waitDays !== "N/A" ? `${order.waitDays} ngày` : "-"}
-                           </td>
-                           <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#f59e0b' }}>
-                              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.tongTien)}
-                           </td>
+               <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px', position: 'relative' }}>
+                  {historyModalTab === 'orders' && (
+                     <table className="data-table" style={{ width: '100%' }}>
+                       <thead>
+                         <tr>
+                           <th style={{width: '40px', textAlign: 'center'}}>STT</th>
+                           <th>Mã Đơn Hàng</th>
+                           <th>Ngày Báo Giá</th>
+                           <th>Ngày Đơn Hàng</th>
+                           <th style={{textAlign: 'center'}}>Ngày Chờ Chốt</th>
+                           <th style={{textAlign: 'right'}}>Số Tiền</th>
                          </tr>
-                      )) : (
-                         <tr><td colSpan="6" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>Không có lịch sử đơn hàng.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                       </thead>
+                       <tbody>
+                         {customerHistoryData.length > 0 ? customerHistoryData.map((order, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid var(--border-glass)' }}>
+                              <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{idx + 1}</td>
+                              <td 
+                                 style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)', position: 'relative', cursor: 'help' }}
+                                 onMouseEnter={() => setHoveredHistoryOrder(order.so_don_hang)}
+                                 onMouseLeave={() => setHoveredHistoryOrder(null)}
+                              >
+                                 {order.so_don_hang}
+                                 {hoveredHistoryOrder === order.so_don_hang && (
+                                    <div className="glass-panel" style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-10%)', zIndex: 100, minWidth: '450px', maxWidth: '550px', maxHeight: '250px', overflowY: 'auto', padding: '12px', background: 'white', border: '1px solid #3b82f6', borderRadius: '8px', boxShadow: '0 10px 25px rgba(59, 130, 246, 0.2)' }}>
+                                       <div style={{ fontSize: '12px', fontWeight: 'bold', borderBottom: '1px solid var(--border-glass)', paddingBottom: '8px', marginBottom: '8px', color: '#3b82f6' }}>Chi tiết đơn: {order.so_don_hang}</div>
+                                       <table style={{ width: '100%', fontSize: '11px', whiteSpace: 'normal', tableLayout: 'fixed' }}>
+                                          <col style={{width: '45%'}} />
+                                          <col style={{width: '15%'}} />
+                                          <col style={{width: '20%'}} />
+                                          <col style={{width: '20%'}} />
+                                          <thead>
+                                             <tr style={{ color: 'var(--text-secondary)' }}>
+                                                <th style={{ textAlign: 'left', paddingBottom: '4px' }}>Sản Phẩm</th>
+                                                <th style={{ textAlign: 'center', paddingBottom: '4px' }}>SL</th>
+                                                <th style={{ textAlign: 'right', paddingBottom: '4px' }}>Đơn Giá</th>
+                                                <th style={{ textAlign: 'right', paddingBottom: '4px' }}>Thành Tiền</th>
+                                             </tr>
+                                          </thead>
+                                          <tbody>
+                                             {dataCTDH.filter(item => String(item.So_don_hang || item.So_bao_gia || item.So_mua_hang || item.id || "").trim() === order.so_don_hang).map((item, i) => (
+                                                <tr key={i}>
+                                                   <td style={{ padding: '6px 0', borderBottom: '1px dashed var(--border-glass)', wordWrap: 'break-word' }}>{item.Ten_san_pham || item.Ten_hang_hoa || item.San_pham || item.Product || "Unknown"}</td>
+                                                   <td style={{ padding: '6px 0', textAlign: 'center', borderBottom: '1px dashed var(--border-glass)', fontWeight: 'bold' }}>{item.So_luong || item.soluong || item.Quantity || 1}</td>
+                                                   <td style={{ padding: '6px 0', textAlign: 'right', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(Number(item.Don_gia || item.Gia || 0))}</td>
+                                                   <td style={{ padding: '6px 0', textAlign: 'right', fontWeight: 'bold', color: '#10b981', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(Number(item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT || item.Thanh_tien || item.Total || 0))}</td>
+                                                </tr>
+                                             ))}
+                                             {dataCTDH.filter(item => String(item.So_don_hang || item.So_bao_gia || item.So_mua_hang || item.id || "").trim() === order.so_don_hang).length === 0 && (
+                                                <tr><td colSpan={4} style={{ textAlign: 'center', padding: '12px 0', color: 'var(--text-secondary)' }}>Không tìm thấy chi tiết!</td></tr>
+                                             )}
+                                          </tbody>
+                                       </table>
+                                    </div>
+                                 )}
+                              </td>
+                              <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{order.bgDateStr}</td>
+                              <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{order.dhDateStr}</td>
+                              <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', color: order.waitDays !== "N/A" ? (order.waitDays > 3 ? '#ef4444' : '#10b981') : 'var(--text-secondary)' }}>
+                                 {order.waitDays !== "N/A" ? `${order.waitDays} ngày` : "-"}
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#f59e0b' }}>
+                                 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.tongTien)}
+                              </td>
+                            </tr>
+                         )) : (
+                            <tr><td colSpan="6" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>Không có lịch sử đơn hàng.</td></tr>
+                         )}
+                       </tbody>
+                     </table>
+                  )}
+
+                  {historyModalTab === 'products' && (
+                     <table className="data-table" style={{ width: '100%' }}>
+                       <thead>
+                         <tr>
+                           <th style={{width: '60px', textAlign: 'center'}}>STT</th>
+                           <th>Tên Sản Phẩm</th>
+                           <th style={{textAlign: 'center'}}>Số Lượng Đã Mua</th>
+                           <th style={{textAlign: 'right'}}>Đơn Giá (TB)</th>
+                           <th style={{textAlign: 'right'}}>Tổng Tiền (Chưa VAT)</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {customerProductsData.length > 0 ? customerProductsData.map((prod, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid var(--border-glass)' }}>
+                              <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>{idx + 1}</td>
+                              <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>{prod.tenSP}</td>
+                              <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', color: '#3b82f6' }}>{prod.soluong}</td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-secondary)' }}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(prod.dongia)}</td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(prod.tongtien)}</td>
+                            </tr>
+                         )) : (
+                            <tr><td colSpan="5" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>Không có sản phẩm nào.</td></tr>
+                         )}
+                       </tbody>
+                     </table>
+                  )}
                </div>
             </div>
          </div>
