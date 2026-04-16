@@ -884,7 +884,7 @@ function App() {
        return { uniqueProducts: uProducts, selectedProductStats: stats };
   }, [dataBG, dataDH, dataCTBG, dataCTDH, selectedProducts, prStartDate, prEndDate]);
 
-  const { filteredProfitData, totalProfitDoanhThu, totalProfitGiaVon, totalProfitCpKhac, totalProfitCpVC, totalProfitFinal } = useMemo(() => {
+  const { filteredProfitData, totalProfitDoanhThu, totalProfitGiaVon, totalProfitCpKhac, totalProfitCpVC, totalProfitFinal, profitByOrderId } = useMemo(() => {
      const mhByOrder = {};
      const dgcByOrder = {};
      const vcByOrder = {};
@@ -981,13 +981,19 @@ function App() {
         return r.date.getTime() >= start && r.date.getTime() <= end;
      }).sort((a,b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
 
+     const profitMap = {};
+     profitDataTemp.forEach(r => {
+         profitMap[r.so_don_hang] = r;
+     });
+
      return {
         filteredProfitData: fProfit,
         totalProfitDoanhThu: fProfit.reduce((acc, r) => acc + r.doanhThu, 0),
         totalProfitGiaVon: fProfit.reduce((acc, r) => acc + r.giaVon, 0),
         totalProfitCpKhac: fProfit.reduce((acc, r) => acc + r.chiPhiKhac, 0),
         totalProfitCpVC: fProfit.reduce((acc, r) => acc + r.chiPhiVC, 0),
-        totalProfitFinal: fProfit.reduce((acc, r) => acc + r.loiNhuan, 0)
+        totalProfitFinal: fProfit.reduce((acc, r) => acc + r.loiNhuan, 0),
+        profitByOrderId: profitMap
      }
   }, [dataDH, dataMH, dataDGC, dataVC, startDate, endDate]);
 
@@ -1143,10 +1149,13 @@ function App() {
              waitDays = diffDays >= 0 ? diffDays : 0;
          }
          const tongTien = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || 0);
+         
+         const profitInfo = profitByOrderId && profitByOrderId[so_don_hang];
+         const loiNhuan = profitInfo ? profitInfo.loiNhuan : 0;
 
          return {
              so_don_hang, bgDateStr, dhDateStr: dhDate ? `${String(dhDate.getDate()).padStart(2,'0')}/${String(dhDate.getMonth()+1).padStart(2,'0')}/${dhDate.getFullYear()}` : (dhDateStr || "N/A"),
-             waitDays, tongTien, dateForSort: dhDate ? dhDate.getTime() : 0, dhDate
+             waitDays, tongTien, loiNhuan, dateForSort: dhDate ? dhDate.getTime() : 0, dhDate
          };
      });
 
@@ -1160,7 +1169,7 @@ function App() {
         if (end) return t <= end;
         return true;
      }).sort((a,b) => b.dateForSort - a.dateForSort);
-  }, [dataDH, dataBG, selectedHistoryCustomer, historyStartDate, historyEndDate]);
+  }, [dataDH, dataBG, selectedHistoryCustomer, historyStartDate, historyEndDate, profitByOrderId]);
 
   const customerProductsData = useMemo(() => {
      if (!selectedHistoryCustomer) return [];
@@ -1206,19 +1215,21 @@ function App() {
            const chuaVAT = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || coVAT / 1.08 || 0);
            
            if (!customerMap[name]) {
-               customerMap[name] = { khach_hang: name, coVAT: 0, chuaVAT: 0, count: 0, orderIds: [] };
+               customerMap[name] = { khach_hang: name, coVAT: 0, chuaVAT: 0, loiNhuan: 0, count: 0, orderIds: [] };
            }
            customerMap[name].coVAT += coVAT;
            customerMap[name].chuaVAT += chuaVAT;
            customerMap[name].count += 1;
            const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
            customerMap[name].orderIds.push(so_don_hang);
+           const profitInfo = profitByOrderId && profitByOrderId[so_don_hang];
+           if (profitInfo) customerMap[name].loiNhuan += (profitInfo.loiNhuan || 0);
         }
      });
 
      const filtered = Object.values(customerMap).filter(c => c.coVAT >= revenueThreshold && c.count >= orderCountThreshold);
      return filtered.sort((a,b) => b.coVAT - a.coVAT);
-  }, [dataDH, revenueStartDate, revenueEndDate, revenueThreshold, orderCountThreshold]);
+  }, [dataDH, revenueStartDate, revenueEndDate, revenueThreshold, orderCountThreshold, profitByOrderId]);
 
   const quotesAppStatistics = useMemo(() => {
      const start = quotesStartDate ? new Date(quotesStartDate).setHours(0,0,0,0) : 0;
@@ -1559,6 +1570,7 @@ function App() {
                       <th style={{textAlign: 'center'}}>Số Đơn</th>
                       <th style={{textAlign: 'right'}}>Doanh Thu (Chưa VAT)</th>
                       <th style={{textAlign: 'right'}}>Doanh Thu (Có VAT)</th>
+                      <th style={{textAlign: 'right'}}>Lợi Nhuận</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1575,10 +1587,11 @@ function App() {
                          <td style={{padding: '12px 16px', textAlign: 'center', fontWeight: '500'}}>{r.count} đh</td>
                          <td style={{padding: '12px 16px', textAlign: 'right', color: '#f59e0b'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(r.chuaVAT)}</td>
                          <td style={{padding: '12px 16px', textAlign: 'right', fontWeight: 'bold', color: '#10b981'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(r.coVAT)}</td>
+                         <td style={{padding: '12px 16px', textAlign: 'right', fontWeight: 'bold', color: r.loiNhuan >= 0 ? '#8b5cf6' : '#ef4444'}}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(r.loiNhuan)}</td>
                        </tr>
                     ))}
                     {topRevenueData.length === 0 && (
-                       <tr><td colSpan="5" style={{textAlign: 'center', padding: '24px'}}>Không có khách hàng nào đạt mức doanh thu này trong khoảng thời gian đã chọn.</td></tr>
+                       <tr><td colSpan="6" style={{textAlign: 'center', padding: '24px'}}>Không có khách hàng nào đạt mức doanh thu này trong khoảng thời gian đã chọn.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -2244,6 +2257,10 @@ function App() {
                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tổng doanh thu (Chưa VAT)</div>
                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#10b981' }}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(customerHistoryData.reduce((sum, curr) => sum + curr.tongTien, 0))}</div>
                   </div>
+                  <div style={{ flex: 1, minWidth: '150px' }}>
+                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Tổng lợi nhuận</div>
+                     <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#8b5cf6' }}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(customerHistoryData.reduce((sum, curr) => sum + (curr.loiNhuan || 0), 0))}</div>
+                  </div>
                </div>
                
                <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)', background: 'var(--bg-glass)' }}>
@@ -2262,6 +2279,7 @@ function App() {
                            <th>Ngày Đơn Hàng</th>
                            <th style={{textAlign: 'center'}}>Ngày Chờ Chốt</th>
                            <th style={{textAlign: 'right'}}>Số Tiền</th>
+                           <th style={{textAlign: 'right'}}>Lợi Nhuận</th>
                          </tr>
                        </thead>
                        <tbody>
@@ -2323,9 +2341,12 @@ function App() {
                               <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#f59e0b' }}>
                                  {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.tongTien)}
                               </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: (order.loiNhuan >= 0 ? '#8b5cf6' : '#ef4444') }}>
+                                 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.loiNhuan || 0)}
+                              </td>
                             </tr>
                          )) : (
-                            <tr><td colSpan="6" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>Không có lịch sử đơn hàng.</td></tr>
+                            <tr><td colSpan="7" style={{textAlign: 'center', padding: '24px', color: 'var(--text-secondary)'}}>Không có lịch sử đơn hàng.</td></tr>
                          )}
                        </tbody>
                      </table>
