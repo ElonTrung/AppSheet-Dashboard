@@ -1455,7 +1455,7 @@ function App() {
           <SalesModule dataBG={dataBG} dataDH={dataDH} dataCTDH={dataCTDH} onRefresh={loadAllData} />
         ) : activeTab === 'overview_vip' ? (
           <ExecutiveSummary 
-            dataDH={dataDH} dataMH={dataMH} dataDGC={dataDGC} dataBG={dataBG} 
+            dataDH={dataDH} dataMH={dataMH} dataDGC={dataDGC} dataBG={dataBG} dataCTDH={dataCTDH}
             newBuyersToday={newBuyersToday} newBuyersTotalChuaVAT={newBuyersTotalChuaVAT} newBuyersList={newBuyersList}
             profitByOrderId={profitByOrderId}
             nbStartDate={nbStartDate} nbEndDate={nbEndDate} 
