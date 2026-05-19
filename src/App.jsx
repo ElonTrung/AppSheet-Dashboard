@@ -729,6 +729,21 @@ function App() {
              nbList.push(info);
          }
       });
+      const quoteDateMap = {};
+      dataBG.forEach(b => {
+         const id = String(b.So_bao_gia || b.id || b.ID || "").trim();
+         if (id) quoteDateMap[id] = parseAppSheetDate(getRowDateStr(b));
+      });
+
+      nbList.forEach(info => {
+          const bgDate = quoteDateMap[info.orderId];
+          if (info.date && bgDate && !isNaN(info.date) && !isNaN(bgDate)) {
+              const diffTime = info.date.getTime() - bgDate.getTime();
+              info.waitDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          } else {
+              info.waitDays = "N/A";
+          }
+      });
       nbList.sort((a, b) => b.date.getTime() - a.date.getTime());
 
       const ncStart = ncStartDate ? new Date(ncStartDate) : null;

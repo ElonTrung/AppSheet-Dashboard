@@ -171,6 +171,7 @@ export default function ExecutiveSummary({
                                 <th>Ngày Bán Hàng</th>
                                 <th>Số Đơn Hàng</th>
                                 <th>Khách Hàng</th>
+                                <th style={{ textAlign: 'center' }}>Số Ngày Chốt Đơn</th>
                                 <th style={{ textAlign: 'right' }}>Doanh Thu (trước VAT)</th>
                                 <th style={{ textAlign: 'right' }}>Lợi Nhuận</th>
                                 <th style={{ textAlign: 'center' }}>Trạng Thái</th>
@@ -187,6 +188,9 @@ export default function ExecutiveSummary({
                                     </td>
                                     <td style={{ padding: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>{item.orderId}</td>
                                     <td style={{ padding: '20px', color: 'var(--text-secondary)' }}>{item.khachHang}</td>
+                                    <td style={{ padding: '20px', textAlign: 'center', fontWeight: 'bold', color: item.waitDays !== "N/A" ? (item.waitDays > 3 ? '#ef4444' : '#10b981') : 'var(--text-secondary)' }}>
+                                        {item.waitDays !== "N/A" ? `${item.waitDays} ngày` : "-"}
+                                    </td>
                                     <td style={{ padding: '20px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
                                         {formatCurrency(item.tongTienChuaVAT)}
                                     </td>
@@ -202,7 +206,7 @@ export default function ExecutiveSummary({
                                 )
                             }) : (
                                 <tr>
-                                    <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>Không có đơn hàng nào trong khoảng thời gian này.</td>
+                                    <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>Không có đơn hàng nào trong khoảng thời gian này.</td>
                                 </tr>
                             )}
                         </tbody>
