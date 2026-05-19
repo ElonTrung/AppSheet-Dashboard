@@ -36,6 +36,43 @@ export const fetchAppSheetData = async (tableName) => {
   }
 };
 
+export const mutateAppSheetData = async (tableName, action, rowData) => {
+  try {
+    const url = `/appsheet-api/api/v2/apps/${APP_ID}/tables/${tableName}/Action`;
+    
+    const payload = {
+        Action: action,
+        Properties: {
+          Locale: "vi-VN",
+          Timezone: "Asia/Ho_Chi_Minh"
+        },
+        Rows: [rowData]
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'ApplicationAccessKey': ACCESS_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        // AppSheet returns helpful error messages in body usually, but we fallback
+        const text = await response.text();
+        console.error(`Failed to ${action} ${tableName}`, text);
+        return { success: false, error: text || response.statusText };
+    }
+
+    const data = await response.json();
+    return { success: true, data };
+  } catch (error) {
+    console.error(`Error connecting to AppSheet for ${action} ${tableName}:`, error);
+    return { success: false, error: error.message };
+  }
+};
+
 const getMockData = (type) => {
   if (type === "baogia") {
     return [

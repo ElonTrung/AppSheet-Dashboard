@@ -17,7 +17,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/misa-auth/, '')
       },
       '/misa-api': {
-        target: 'https://openapi.misa.com.vn', // This is typical for MISA APIs
+        target: 'https://actapp.misa.vn', 
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/misa-api/, '')
       }

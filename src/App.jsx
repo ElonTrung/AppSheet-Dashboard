@@ -8,7 +8,14 @@ import {
   BarChart, Bar, Legend, LineChart, Line
 } from 'recharts';
 import { fetchAppSheetData } from './services/appsheet';
-import { getMisaAccessToken, fetchMisaPurchaseData } from './services/misa';
+import { getMisaAccessToken, fetchMisaPurchaseData, fetchMisaSalesData, fetchMisaInventoryItems } from './services/misa';
+import SalesModule from './pages/Sales/SalesModule';
+
+/* --- VIP MODULE IMPORTS --- */
+import ExecutiveSummary from './components/VIP/ExecutiveSummary';
+import FinanceModule from './components/VIP/FinanceModule';
+import SalesCRMModule from './components/VIP/SalesCRMModule';
+import ProcurementModule from './components/VIP/ProcurementModule';
 
 const getSum = (arr) => arr.reduce((acc, curr) => {
   const val = curr['Tong_tien_da_ co_VAT'] || curr.Tong_tien_da_co_VAT || curr.Tong_tien_mua_hang_co_VAT || curr.total || curr.Total || curr['Tổng tiền'] || curr['Thành tiền'] || curr.Price || 0;
@@ -90,7 +97,8 @@ function App() {
   const [dataCTBG, setDataCTBG] = useState([]);
   const [dataDGC, setDataDGC] = useState([]);
   const [dataVC, setDataVC] = useState([]);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('overview_vip');
+  const [activeModule, setActiveModule] = useState('dashboard');
 
   const [profitPage, setProfitPage] = useState(1);
   const [misaPage, setMisaPage] = useState(1);
@@ -126,44 +134,55 @@ function App() {
   useEffect(() => { setProfitPage(1); }, [startDate, endDate]);
 
   const [misaPurchaseData, setMisaPurchaseData] = useState([]);
+  const [misaSalesData, setMisaSalesData] = useState([]);
+  const [misaInventoryData, setMisaInventoryData] = useState([]);
   const [loadingMisaPurchase, setLoadingMisaPurchase] = useState(false);
   const [misaError, setMisaError] = useState(null);
+  const [misaSubTab, setMisaSubTab] = useState('ban_hang');
+  const [misaSalesPage, setMisaSalesPage] = useState(1);
+
+  const loadAllData = async () => {
+    setLoading(true);
+    const [bg, dh, mh, ncc, ctdh, dgc, vc, ctbg] = await Promise.all([
+      fetchAppSheetData("baogia"),
+      fetchAppSheetData("donhang"),
+      fetchAppSheetData("muahang"),
+      fetchAppSheetData("ncc"),
+      fetchAppSheetData("chitietdonhang"),
+      fetchAppSheetData("denghichi"),
+      fetchAppSheetData("vanchuyen"),
+      fetchAppSheetData("chitietbaogia")
+    ]);
+    setDataBG(bg);
+    setDataDH(dh);
+    setDataMH(mh);
+    setDataNCC(ncc);
+    setDataCTDH(ctdh);
+    setDataDGC(dgc);
+    setDataVC(vc);
+    setDataCTBG(ctbg);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    const loadAllData = async () => {
-      setLoading(true);
-      const [bg, dh, mh, ncc, ctdh, dgc, vc, ctbg] = await Promise.all([
-        fetchAppSheetData("baogia"),
-        fetchAppSheetData("donhang"),
-        fetchAppSheetData("muahang"),
-        fetchAppSheetData("ncc"),
-        fetchAppSheetData("chitietdonhang"),
-        fetchAppSheetData("denghichi"),
-        fetchAppSheetData("vanchuyen"),
-        fetchAppSheetData("chitietbaogia")
-      ]);
-      setDataBG(bg);
-      setDataDH(dh);
-      setDataMH(mh);
-      setDataNCC(ncc);
-      setDataCTDH(ctdh);
-      setDataDGC(dgc);
-      setDataVC(vc);
-      setDataCTBG(ctbg);
-      setLoading(false);
-    };
     loadAllData();
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'misa' && misaPurchaseData.length === 0) {
+    if (activeTab === 'misa' && misaPurchaseData.length === 0 && misaSalesData.length === 0 && misaInventoryData.length === 0) {
       const loadMisaData = async () => {
         setLoadingMisaPurchase(true);
         setMisaError(null);
         try {
            const token = await getMisaAccessToken();
-           const data = await fetchMisaPurchaseData(token);
-           setMisaPurchaseData(data);
+           const [purchaseData, salesData, inventoryData] = await Promise.all([
+             fetchMisaPurchaseData(token),
+             fetchMisaSalesData(token),
+             fetchMisaInventoryItems(token)
+           ]);
+           setMisaPurchaseData(purchaseData);
+           setMisaSalesData(salesData);
+           setMisaInventoryData(inventoryData);
         } catch (err) {
            setMisaError(err.message || 'Lỗi kết nối MISA');
         } finally {
@@ -172,7 +191,7 @@ function App() {
       };
       loadMisaData();
     }
-  }, [activeTab, misaPurchaseData.length]);
+  }, [activeTab, misaPurchaseData.length, misaSalesData.length, misaInventoryData.length]);
 
   const { filteredBG, filteredDH, filteredMH, totalBG, totalDH, totalMH } = useMemo(() => {
      const filterByDate = (arr) => {
@@ -676,9 +695,9 @@ function App() {
   }, [dataDH, nbStartDate, nbEndDate]);
 
   const { 
-     newBuyersToday, newBuyersOrderIds, newCustomersToday, 
+     newBuyersToday, newBuyersOrderIds, newBuyersTotalChuaVAT, newCustomersToday, 
      uniqueCustomers, selectedCustomerStats,
-     topCustomers, topSuppliers, recentActivities, finalTopProducts
+     topCustomers, topSuppliers, recentActivities, finalTopProducts, newBuyersList
   } = useMemo(() => {
       const customerFirstOrderMap = {};
       dataDH.forEach(row => {
@@ -687,7 +706,8 @@ function App() {
          const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
          if (d && !isNaN(d)) {
             if (!customerFirstOrderMap[name] || d < customerFirstOrderMap[name].date) {
-               customerFirstOrderMap[name] = { date: d, orderId: so_don_hang };
+               const tongTien = Number(row.Tong_tien_chua_VAT_cot_ao || row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || (getSaleValue(row) / 1.08) || 0);
+               customerFirstOrderMap[name] = { date: d, orderId: so_don_hang, tongTienChuaVAT: tongTien, khachHang: name, fullRow: row };
             }
          }
       });
@@ -699,12 +719,17 @@ function App() {
 
       let nbToday = 0;
       const nbOrderIds = [];
+      let nbTotalChuaVAT = 0;
+      const nbList = [];
       Object.values(customerFirstOrderMap).forEach(info => {
          if (nbStart && nbEnd && info.date.getTime() >= nbStart.getTime() && info.date.getTime() <= nbEnd.getTime()) {
              nbToday++;
              nbOrderIds.push(info.orderId);
+             nbTotalChuaVAT += info.tongTienChuaVAT;
+             nbList.push(info);
          }
       });
+      nbList.sort((a, b) => b.date.getTime() - a.date.getTime());
 
       const ncStart = ncStartDate ? new Date(ncStartDate) : null;
       if (ncStart) ncStart.setHours(0, 0, 0, 0);
@@ -807,6 +832,8 @@ function App() {
       return {
          newBuyersToday: nbToday,
          newBuyersOrderIds: nbOrderIds,
+         newBuyersTotalChuaVAT: nbTotalChuaVAT,
+         newBuyersList: nbList,
          newCustomersToday: newCustsToday,
          uniqueCustomers: uCustomers,
          selectedCustomerStats: selectedCustomerStats,
@@ -941,7 +968,7 @@ function App() {
          const so_don_hang = String(row.So_don_hang || row.So_bao_gia || row.So_mua_hang || row.id || row.ID || row.Id || "N/A").trim();
          const dateStr = getRowDateStr(row);
          const d = parseAppSheetDate(dateStr);
-         const doanhThu = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || 0);
+         const doanhThu = Number(row.Tong_tien_chua_VAT_cot_ao || row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || 0);
 
          const relatedMH = mhByOrder[so_don_hang] || [];
          const giaVon = relatedMH.reduce((acc, r) => acc + getValTruocThue(r), 0);
@@ -1148,7 +1175,7 @@ function App() {
              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
              waitDays = diffDays >= 0 ? diffDays : 0;
          }
-         const tongTien = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || 0);
+         const tongTien = Number(row.Tong_tien_chua_VAT_cot_ao || row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || 0);
          
          const profitInfo = profitByOrderId && profitByOrderId[so_don_hang];
          const loiNhuan = profitInfo ? profitInfo.loiNhuan : 0;
@@ -1183,7 +1210,7 @@ function App() {
            const tenSP = String(item.Ten_san_pham || item.Ten_sanpham || item.Ten_hang_hoa || item.San_pham || item.Product || "Unknown").trim();
            const soluong = Number(item.So_luong || item.soluong || item.Quantity || 0);
            let dongia = Number(item.Don_gia || item.Gia_ban || item.Gia || 0);
-           const ttChuaVAT = Number(item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT || item.Thanh_tien || item.Tong_tien || item.Total || (soluong * dongia) || 0);
+           const ttChuaVAT = Number(item.Thanh_tien_chua_VAT_cot_ao || item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT_cot_ao || item.Tong_tien_chua_VAT || item.Thanh_tien || item.Tong_tien || item.Total || (soluong * dongia) || 0);
            if (dongia === 0 && soluong > 0) dongia = ttChuaVAT / soluong;
            
            const key = `${tenSP}|${dongia}`;
@@ -1212,7 +1239,7 @@ function App() {
            if (!name || name === 'Unknown') return;
            
            const coVAT = getSaleValue(row);
-           const chuaVAT = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || coVAT / 1.08 || 0);
+           const chuaVAT = Number(row.Tong_tien_chua_VAT_cot_ao || row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || coVAT / 1.08 || 0);
            
            if (!customerMap[name]) {
                customerMap[name] = { khach_hang: name, coVAT: 0, chuaVAT: 0, loiNhuan: 0, count: 0, orderIds: [] };
@@ -1254,8 +1281,8 @@ function App() {
            const id = String(row.So_bao_gia || row.id || row.ID || row.Id || "N/A").trim();
            const khach_hang = String(getCustomerName(row)).trim();
            const dateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-           // We try to reuse getSaleValue or extract directly
-           const value = getSaleValue(row);
+           // We try to extract directly from new columns or reuse getSaleValue
+           const value = Number(row.Tong_tien_chua_VAT_cot_ao || row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || getSaleValue(row) || 0);
 
            const isConverted = orderQuoteIds.has(id);
            
@@ -1324,7 +1351,7 @@ function App() {
              waitDays = diffDays >= 0 ? diffDays : 0;
          }
 
-         const tongTien = Number(row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || 0);
+         const tongTien = Number(row.Tong_tien_chua_VAT_cot_ao || row.Tong_tien_chua_VAT || row.Tong_tien_truoc_VAT || row.Truoc_thue || row['Tổng tiền trước thuế'] || row.Thanh_tien_truoc_thue || 0);
 
          return {
              so_don_hang,
@@ -1347,32 +1374,42 @@ function App() {
           <span>AppSheetDash</span>
         </div>
         <nav className="sidebar-nav">
-          <button className={`nav-item ${activeTab === 'overview' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'overview' ? '3px solid var(--accent-blue)' : 'none'}} onClick={() => setActiveTab('overview')}>
-            <LayoutDashboard size={20} /> Tổng quan
+          <div style={{fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)', textTransform: 'uppercase', padding: '12px 16px 4px'}}>Ban Giám Đốc</div>
+          <button className={`nav-item ${activeModule === 'dashboard' && activeTab === 'overview_vip' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeModule === 'dashboard' && activeTab === 'overview_vip' ? '3px solid var(--accent-blue)' : 'none'}} onClick={() => { setActiveModule('dashboard'); setActiveTab('overview_vip'); }}>
+            <Activity size={20} /> Tổng Quan Trọng Yếu
           </button>
-          <button className={`nav-item ${activeTab === 'profit' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'profit' ? '3px solid var(--accent-blue)' : 'none', marginTop: '8px'}} onClick={() => setActiveTab('profit')}>
-            <DollarSign size={20} /> Lợi Nhuận Đơn Hàng
+          <button className={`nav-item ${activeModule === 'dashboard' && activeTab === 'finance_vip' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeModule === 'dashboard' && activeTab === 'finance_vip' ? '3px solid var(--accent-blue)' : 'none', marginTop: '4px'}} onClick={() => { setActiveModule('dashboard'); setActiveTab('finance_vip'); }}>
+            <DollarSign size={20} /> Tài Chính & Dòng Tiền
           </button>
-          <button className={`nav-item ${activeTab === 'quotes' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'quotes' ? '3px solid var(--accent-blue)' : 'none', marginTop: '8px'}} onClick={() => setActiveTab('quotes')}>
-            <FileText size={20} /> Báo Giá
+
+          <div style={{fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)', textTransform: 'uppercase', padding: '16px 16px 4px'}}>Khối Kinh Doanh</div>
+          <button className={`nav-item ${activeModule === 'dashboard' && activeTab === 'sales_vip' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeModule === 'dashboard' && activeTab === 'sales_vip' ? '3px solid var(--accent-blue)' : 'none'}} onClick={() => { setActiveModule('dashboard'); setActiveTab('sales_vip'); }}>
+            <TrendingUp size={20} /> Bán Hàng & CRM
           </button>
-          <button className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', marginTop: '8px'}}>
-            <ShoppingCart size={20} /> Đơn Bán Hàng
+          <button className={`nav-item ${activeModule === 'sales' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeModule === 'sales' ? '3px solid var(--accent-blue)' : 'none', marginTop: '4px'}} onClick={() => setActiveModule('sales')}>
+            <ShoppingCart size={20} /> Quản lý Đơn Bán Hàng
           </button>
-          <button className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left'}}>
-            <FileDown size={20} /> Đơn Mua Hàng
+
+          <div style={{fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)', textTransform: 'uppercase', padding: '16px 16px 4px'}}>Cung Ứng & Vận Hành</div>
+          <button className={`nav-item ${activeModule === 'dashboard' && activeTab === 'procurement_vip' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeModule === 'dashboard' && activeTab === 'procurement_vip' ? '3px solid var(--accent-blue)' : 'none'}} onClick={() => { setActiveModule('dashboard'); setActiveTab('procurement_vip'); }}>
+            <Package size={20} /> Mua Hàng & Tồn Kho
           </button>
-          <button className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left'}}>
-            <Users size={20} /> Nhà Cung Cấp
+
+          <div style={{fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)', textTransform: 'uppercase', padding: '16px 16px 4px'}}>Báo Cáo Classic</div>
+          <button className={`nav-item ${activeTab === 'overview' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left'}} onClick={() => { setActiveModule('dashboard'); setActiveTab('overview'); }}>
+            <LayoutDashboard size={20} /> Bảng Điều Khiển Cũ
           </button>
-          <button className={`nav-item ${activeTab === 'misa' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'misa' ? '3px solid var(--accent-blue)' : 'none', marginTop: '8px'}} onClick={() => setActiveTab('misa')}>
-            <Package size={20} /> Misa Mua Hàng
+          <button className={`nav-item ${activeTab === 'profit' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', marginTop: '4px'}} onClick={() => { setActiveModule('dashboard'); setActiveTab('profit'); }}>
+            <FileCheck size={20} /> Lợi Nhuận Chi Tiết
           </button>
-          <button className={`nav-item ${activeTab === 'top-revenue' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', borderLeft: activeTab === 'top-revenue' ? '3px solid var(--accent-blue)' : 'none', marginTop: '8px'}} onClick={() => setActiveTab('top-revenue')}>
-            <TrendingUp size={20} /> Top Doanh Thu
+          
+          <div style={{fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)', textTransform: 'uppercase', padding: '16px 16px 4px'}}>Tích Hợp API</div>
+          <button className={`nav-item ${activeTab === 'misa' ? 'active' : ''}`} style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', marginTop: '4px'}} onClick={() => { setActiveModule('dashboard'); setActiveTab('misa'); }}>
+            <FileDown size={20} /> Dữ Liệu Kế Toán MISA
           </button>
+
           <button className="nav-item" style={{ marginTop: 'auto', background: 'none', border: 'none', width: '100%', textAlign: 'left' }}>
-            <Settings size={20} /> Cài đặt
+            <Settings size={20} /> Cài đặt hệ thống
           </button>
         </nav>
       </aside>
@@ -1399,9 +1436,41 @@ function App() {
              <Activity className="animate-spin" size={32} style={{margin: '0 auto 16px', display: 'block'}} />
              Đang đồng bộ dữ liệu với AppSheet...
           </div>
+        ) : activeModule === 'sales' ? (
+          <SalesModule dataBG={dataBG} dataDH={dataDH} dataCTDH={dataCTDH} onRefresh={loadAllData} />
+        ) : activeTab === 'overview_vip' ? (
+          <ExecutiveSummary 
+            dataDH={dataDH} dataMH={dataMH} dataDGC={dataDGC} dataBG={dataBG} 
+            newBuyersToday={newBuyersToday} newBuyersTotalChuaVAT={newBuyersTotalChuaVAT} newBuyersList={newBuyersList}
+            profitByOrderId={profitByOrderId}
+            nbStartDate={nbStartDate} nbEndDate={nbEndDate} 
+            setNbStartDate={setNbStartDate} setNbEndDate={setNbEndDate} 
+          />
+        ) : activeTab === 'finance_vip' ? (
+          <FinanceModule dataDH={dataDH} dataDGC={dataDGC} />
+        ) : activeTab === 'sales_vip' ? (
+          <SalesCRMModule dataBG={dataBG} dataDH={dataDH} />
+        ) : activeTab === 'procurement_vip' ? (
+          <ProcurementModule dataMH={dataMH} dataNCC={dataNCC} dataVC={dataVC} />
         ) : activeTab === 'misa' ? (
           <div className="misa-view" style={{padding: '24px'}}>
-             <h2 style={{margin: '0 0 24px 0'}}>Dữ Liệu Đơn Mua Hàng Từ MISA AMIS</h2>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+               <h2 style={{margin: '0'}}>Dữ Liệu Tích Hợp MISA AMIS</h2>
+               <div style={{ display: 'flex', gap: '8px', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '8px' }}>
+                 <button 
+                   onClick={() => setMisaSubTab('ban_hang')} 
+                   style={{ padding: '8px 16px', border: 'none', background: misaSubTab === 'ban_hang' ? 'var(--primary-color)' : 'transparent', color: misaSubTab === 'ban_hang' ? '#fff' : 'var(--text-secondary)', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                 >Hóa Đơn Bán Hàng</button>
+                 <button 
+                   onClick={() => setMisaSubTab('mua_hang')} 
+                   style={{ padding: '8px 16px', border: 'none', background: misaSubTab === 'mua_hang' ? 'var(--primary-color)' : 'transparent', color: misaSubTab === 'mua_hang' ? '#fff' : 'var(--text-secondary)', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                 >Hóa Đơn Mua Hàng</button>
+                 <button 
+                   onClick={() => setMisaSubTab('vat_tu')} 
+                   style={{ padding: '8px 16px', border: 'none', background: misaSubTab === 'vat_tu' ? 'var(--primary-color)' : 'transparent', color: misaSubTab === 'vat_tu' ? '#fff' : 'var(--text-secondary)', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                 >Danh Mục Sản Phẩm</button>
+               </div>
+             </div>
              {loadingMisaPurchase ? (
                 <div style={{ textAlign: 'center', marginTop: '40px', color: 'var(--text-secondary)' }}>
                    <Activity className="animate-spin" size={32} style={{margin: '0 auto 16px', display: 'block'}} />
@@ -1413,38 +1482,104 @@ function App() {
                 </div>
              ) : (
                 <div className="glass-panel" style={{overflowX: 'auto', padding: '24px', minHeight: '400px'}}>
-                   <table className="data-table">
-                     <thead>
-                       <tr>
-                         <th>Số Phiếu (RefNo)</th>
-                         <th>Ngày Mua</th>
-                         <th>Nhà Cung Cấp</th>
-                         <th style={{textAlign: 'right'}}>Số Hóa Đơn</th>
-                         <th style={{textAlign: 'right'}}>Tổng Giá Trị</th>
-                       </tr>
-                     </thead>
-                     <tbody>
-                       {misaPurchaseData.slice((misaPage - 1) * itemsPerPage, misaPage * itemsPerPage).map((r, i) => (
-                          <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
-                            <td style={{padding: '12px 16px', fontWeight: 600}}>{r.RefNo}</td>
-                            <td style={{padding: '12px 16px'}}>{r.RefDate}</td>
-                            <td style={{padding: '12px 16px'}}>{r.VendorName}</td>
-                            <td style={{padding: '12px 16px', textAlign: 'right'}}>{r.InvNo || '-'}</td>
-                            <td style={{padding: '12px 16px', textAlign: 'right', color: '#10b981', fontWeight: 'bold'}}>{new Intl.NumberFormat('vi-VN').format(r.TotalAmount || 0)}</td>
-                          </tr>
-                       ))}
-                       {misaPurchaseData.length === 0 && (
-                          <tr><td colSpan="5" style={{textAlign: 'center', padding: '24px'}}>Không có dữ liệu MUA HÀNG từ MISA.</td></tr>
+                   {misaSubTab === 'vat_tu' ? (
+                     <>
+                       <h3 style={{marginTop: 0, marginBottom: '16px', color: 'var(--text-primary)'}}>Danh Mục Sản Phẩm (Từ MISA)</h3>
+                       <table className="data-table">
+                         <thead>
+                           <tr>
+                             <th>Mã SP</th>
+                             <th>Tên Sản Phẩm</th>
+                             <th style={{textAlign: 'right'}}>Đơn Giá Bán</th>
+                             <th style={{textAlign: 'right'}}>Thuế Suất (%)</th>
+                           </tr>
+                         </thead>
+                         <tbody>
+                           {misaInventoryData.slice((misaPage - 1) * itemsPerPage, misaPage * itemsPerPage).map((r, i) => (
+                              <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
+                                <td style={{padding: '12px 16px', fontWeight: 600}}>{r.inventory_item_code}</td>
+                                <td style={{padding: '12px 16px'}}>{r.inventory_item_name}</td>
+                                <td style={{padding: '12px 16px', textAlign: 'right', color: 'var(--accent-green)', fontWeight: 600}}>
+                                   {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(r.unit_price || 0)}
+                                </td>
+                                <td style={{padding: '12px 16px', textAlign: 'right'}}>{r.tax_rate}%</td>
+                              </tr>
+                           ))}
+                         </tbody>
+                       </table>
+                     </>
+                   ) : misaSubTab === 'mua_hang' ? (
+                     <>
+                       <h3 style={{marginTop: 0, marginBottom: '16px', color: 'var(--text-primary)'}}>Danh sách Chứng Từ Mua Hàng</h3>
+                       <table className="data-table">
+                         <thead>
+                           <tr>
+                             <th>Số Phiếu (RefNo)</th>
+                             <th>Ngày Mua</th>
+                             <th>Nhà Cung Cấp</th>
+                             <th style={{textAlign: 'right'}}>Số Hóa Đơn</th>
+                             <th style={{textAlign: 'right'}}>Tổng Giá Trị</th>
+                           </tr>
+                         </thead>
+                         <tbody>
+                           {misaPurchaseData.slice((misaPage - 1) * itemsPerPage, misaPage * itemsPerPage).map((r, i) => (
+                              <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
+                                <td style={{padding: '12px 16px', fontWeight: 600}}>{r.RefNo}</td>
+                                <td style={{padding: '12px 16px'}}>{r.RefDate}</td>
+                                <td style={{padding: '12px 16px'}}>{r.VendorName}</td>
+                                <td style={{padding: '12px 16px', textAlign: 'right'}}>{r.InvNo || '-'}</td>
+                                <td style={{padding: '12px 16px', textAlign: 'right', color: '#10b981', fontWeight: 'bold'}}>{new Intl.NumberFormat('vi-VN').format(r.TotalAmount || 0)}</td>
+                              </tr>
+                           ))}
+                           {misaPurchaseData.length === 0 && (
+                              <tr><td colSpan="5" style={{textAlign: 'center', padding: '24px'}}>Không có dữ liệu MUA HÀNG từ MISA.</td></tr>
+                           )}
+                         </tbody>
+                       </table>
+                       {misaPurchaseData.length > itemsPerPage && (
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', gap: '16px', borderTop: '1px solid var(--border-glass)' }}>
+                             <button onClick={() => setMisaPage(p => Math.max(1, p - 1))} disabled={misaPage === 1} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: misaPage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Trước</button>
+                             <span style={{color: 'var(--text-secondary)'}}>Trang {misaPage} / {Math.ceil(misaPurchaseData.length / itemsPerPage)}</span>
+                             <button onClick={() => setMisaPage(p => Math.min(Math.ceil(misaPurchaseData.length / itemsPerPage), p + 1))} disabled={misaPage >= Math.ceil(misaPurchaseData.length / itemsPerPage)} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: misaPage >= Math.ceil(misaPurchaseData.length / itemsPerPage) ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Sau</button>
+                          </div>
                        )}
-                     </tbody>
-                   </table>
-                   
-                   {misaPurchaseData.length > itemsPerPage && (
-                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', gap: '16px', borderTop: '1px solid var(--border-glass)' }}>
-                         <button onClick={() => setMisaPage(p => Math.max(1, p - 1))} disabled={misaPage === 1} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: misaPage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Trước</button>
-                         <span style={{color: 'var(--text-secondary)'}}>Trang {misaPage} / {Math.ceil(misaPurchaseData.length / itemsPerPage)}</span>
-                         <button onClick={() => setMisaPage(p => Math.min(Math.ceil(misaPurchaseData.length / itemsPerPage), p + 1))} disabled={misaPage >= Math.ceil(misaPurchaseData.length / itemsPerPage)} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: misaPage >= Math.ceil(misaPurchaseData.length / itemsPerPage) ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Sau</button>
-                      </div>
+                     </>
+                   ) : (
+                     <>
+                       <h3 style={{marginTop: 0, marginBottom: '16px', color: 'var(--text-primary)'}}>Danh sách Hóa Đơn Bán Hàng</h3>
+                       <table className="data-table">
+                         <thead>
+                           <tr>
+                             <th>Số Phiếu (RefNo)</th>
+                             <th>Ngày Bán</th>
+                             <th>Khách Hàng</th>
+                             <th style={{textAlign: 'right'}}>Số Hóa Đơn</th>
+                             <th style={{textAlign: 'right'}}>Tổng Giá Trị</th>
+                           </tr>
+                         </thead>
+                         <tbody>
+                           {misaSalesData.slice((misaSalesPage - 1) * itemsPerPage, misaSalesPage * itemsPerPage).map((r, i) => (
+                              <tr key={i} style={{borderBottom: '1px solid var(--border-glass)'}}>
+                                <td style={{padding: '12px 16px', fontWeight: 600, color: 'var(--primary-color)'}}>{r.RefNo}</td>
+                                <td style={{padding: '12px 16px'}}>{r.RefDate}</td>
+                                <td style={{padding: '12px 16px'}}>{r.CustomerName}</td>
+                                <td style={{padding: '12px 16px', textAlign: 'right'}}>{r.InvNo || '-'}</td>
+                                <td style={{padding: '12px 16px', textAlign: 'right', color: '#10b981', fontWeight: 'bold'}}>{new Intl.NumberFormat('vi-VN').format(r.TotalAmount || 0)}</td>
+                              </tr>
+                           ))}
+                           {misaSalesData.length === 0 && (
+                              <tr><td colSpan="5" style={{textAlign: 'center', padding: '24px'}}>Không có dữ liệu BÁN HÀNG từ MISA.</td></tr>
+                           )}
+                         </tbody>
+                       </table>
+                       {misaSalesData.length > itemsPerPage && (
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', gap: '16px', borderTop: '1px solid var(--border-glass)' }}>
+                             <button onClick={() => setMisaSalesPage(p => Math.max(1, p - 1))} disabled={misaSalesPage === 1} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: misaSalesPage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Trước</button>
+                             <span style={{color: 'var(--text-secondary)'}}>Trang {misaSalesPage} / {Math.ceil(misaSalesData.length / itemsPerPage)}</span>
+                             <button onClick={() => setMisaSalesPage(p => Math.min(Math.ceil(misaSalesData.length / itemsPerPage), p + 1))} disabled={misaSalesPage >= Math.ceil(misaSalesData.length / itemsPerPage)} style={{ padding: '6px 12px', border: '1px solid var(--border-glass)', background: 'var(--bg-glass)', borderRadius: '6px', cursor: misaSalesPage >= Math.ceil(misaSalesData.length / itemsPerPage) ? 'not-allowed' : 'pointer', color: 'var(--text-primary)'}}>Sau</button>
+                          </div>
+                       )}
+                     </>
                    )}
                 </div>
              )}
@@ -1719,11 +1854,14 @@ function App() {
                {/* Section 2: Khách Chốt Đơn Đầu Area */}
                <div className="glass-panel" style={{ margin: 0, padding: '24px', minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
                        <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '16px', fontWeight: 'bold' }}>Khách Có Đơn Mới</h3>
                        <span style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{newBuyersToday}</span>
                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', fontWeight: '500' }}>
                          <Users size={14}/> có đơn đầu trong kỳ
+                       </span>
+                       <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--accent-green)', marginLeft: '4px' }}>
+                         Tổng (chưa VAT): {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(newBuyersTotalChuaVAT)}
                        </span>
                        {newBuyersOrderIds.length > 0 && (
                           <span style={{fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px'}}>
@@ -2313,7 +2451,7 @@ function App() {
                                                 const tenSP = String(item.Ten_san_pham || item.Ten_sanpham || item.Ten_hang_hoa || item.San_pham || item.Product || "Unknown").trim();
                                                 const soluong = Number(item.So_luong || item.soluong || item.Quantity || 1);
                                                 let dongia = Number(item.Don_gia || item.Gia_ban || item.Gia || 0);
-                                                const ttChuaVAT = Number(item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT || item.Thanh_tien || item.Tong_tien || item.Total || (soluong * dongia) || 0);
+                                                const ttChuaVAT = Number(item.Thanh_tien_chua_VAT_cot_ao || item.Thanh_tien_chua_VAT || item.Thanh_tien_truoc_thue || item.Truoc_thue || item.Tong_tien_chua_VAT_cot_ao || item.Tong_tien_chua_VAT || item.Thanh_tien || item.Tong_tien || item.Total || (soluong * dongia) || 0);
                                                 if (dongia === 0 && soluong > 0) dongia = ttChuaVAT / soluong;
 
                                                 return (
