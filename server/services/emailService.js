@@ -28,7 +28,11 @@ const LOOKUP_CODE_KEYWORDS = [
   /mã\s+số\s+tra\s+cứu[\s:]+([a-z0-9\-]{4,30})/i,
   /ma\s+so\s+tra\s+cuu[\s:]+([a-z0-9\-]{4,30})/i,
   /mã\s+truy\s+cập[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+truy\s+cap[\s:]+([a-z0-9\-]{4,30})/i
+  /ma\s+truy\s+cap[\s:]+([a-z0-9\-]{4,30})/i,
+  /nhập\s+mã\s+số[\s:]+([a-z0-9\-]{4,30})/i,
+  /nhap\s+ma\s+so[\s:]+([a-z0-9\-]{4,30})/i,
+  /mã\s+số(?![\s]*thuế)[\s:]+([a-z0-9\-]{4,30})/i,
+  /ma\s+so(?![\s]*thue)[\s:]+([a-z0-9\-]{4,30})/i
 ];
 
 /**
@@ -114,7 +118,7 @@ export function extractInvoiceDetails(htmlBody, textBody = '') {
     // Tìm các đoạn text chứa từ khóa tra cứu và lấy text đứng ngay sau nó
     $('td, p, span, div, b, strong').each((i, elem) => {
       const text = $(elem).text().trim();
-      if (/mã\s+tra\s+cứu|ma\s+tra\s+cuu|mã\s+nhận/i.test(text)) {
+      if (/mã\s+tra\s+cứu|ma\s+tra\s+cuu|mã\s+nhận|mã\s+số(?![\s]*thuế)|ma\s+so(?![\s]*thue)/i.test(text)) {
         // Lấy text của thẻ con hoặc thẻ lân cận
         const siblingText = $(elem).next().text().trim() || $(elem).parent().text().trim();
         const codeMatch = siblingText.match(/:?\s*([A-Z0-9\-]{6,12})/i);
