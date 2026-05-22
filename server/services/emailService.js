@@ -181,16 +181,21 @@ export async function fetchInvoiceEmails(config) {
     // Mở hộp thư đến (INBOX) ở chế độ ghi (để có thể đánh dấu đã đọc sau khi xử lý)
     const lock = await client.getMailboxLock('INBOX');
     try {
-      // Tìm kiếm tất cả các thư trong hộp thư
-      console.log('Đang quét danh sách thư trong hộp thư...');
-      const messages = await client.search({ all: true });
-      console.log(`Tìm thấy tổng cộng ${messages.length} thư.`);
+      // 1. Quét danh sách thư chưa đọc (unseen)
+      console.log('Đang quét danh sách thư chưa đọc...');
+      const unseenMessages = await client.search({ unseen: true });
+      console.log(`Tìm thấy ${unseenMessages.length} thư chưa đọc.`);
 
-      // Cắt lấy 50 thư gần đây nhất (mới nhất), đảo ngược để xử lý thư mới nhất trước
-      const limitedMessages = messages.slice(-50).reverse();
-      console.log(`Sẽ tiến hành kiểm tra ${limitedMessages.length} thư gần nhất.`);
+      // 2. Quét danh sách tất cả các thư để lấy 100 thư gần nhất
+      console.log('Đang quét danh sách 100 thư gần nhất...');
+      const allMessages = await client.search({ all: true });
+      const recentMessages = allMessages.slice(-100);
 
-      for (const uid of limitedMessages) {
+      // Gộp danh sách, loại bỏ trùng lặp UID và đảo ngược để thư mới nhất được xử lý trước
+      const combinedMessages = Array.from(new Set([...unseenMessages, ...recentMessages])).reverse();
+      console.log(`Sẽ tiến hành kiểm tra ${combinedMessages.length} thư (gồm thư chưa đọc và 100 thư gần nhất).`);
+
+      for (const uid of combinedMessages) {
         // Tải nội dung email thô
         const messageData = await client.fetchOne(uid, { source: true, envelope: true });
         

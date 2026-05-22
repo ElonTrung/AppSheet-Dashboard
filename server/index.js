@@ -14,7 +14,8 @@ import {
   getAppSheetPurchaseOrders, 
   updateInvoiceToAppSheet, 
   isCompanyMatched,
-  findMatchingCombination
+  findMatchingCombination,
+  parseAppSheetDate
 } from './services/appsheetService.js';
 
 const config = process.env;
@@ -76,32 +77,60 @@ async function runBotWorkflow() {
       console.log(`  + Nhà cung cấp (Hóa đơn): "${parsedData.tenNCC}"`);
       console.log(`  + Số tiền có VAT (Hóa đơn): ${parsedData.tongTienCoVAT.toLocaleString('vi-VN')} VND`);
 
+      // Kiểm tra xem hóa đơn này đã được đồng bộ lên AppSheet trước đó chưa
+      const isAlreadySynced = purchaseOrders.some(po => {
+        const poName = po.Ten_NCC || po.supplier || '';
+        const poInvNo = po.So_hd || po.InvNo || '';
+        return isCompanyMatched(poName, parsedData.tenNCC) && poInvNo.trim() === parsedData.soHoaDon.trim();
+      });
+
+      if (isAlreadySynced) {
+        console.log(`[Đối soát] Hóa đơn số ${parsedData.soHoaDon} của NCC [${parsedData.tenNCC}] đã được đồng bộ trước đó. Bỏ qua.`);
+        // Lưu trữ/di chuyển file XML vào thư mục lưu trữ nếu chưa có
+        try {
+          const archiveDir = path.resolve('./server/archive');
+          if (!fs.existsSync(archiveDir)) {
+            fs.mkdirSync(archiveDir, { recursive: true });
+          }
+          const archivePath = path.join(archiveDir, path.basename(xmlFilePath));
+          if (!fs.existsSync(archivePath)) {
+            fs.renameSync(xmlFilePath, archivePath);
+          } else {
+            fs.unlinkSync(xmlFilePath);
+          }
+        } catch (e) {}
+        successCount++;
+        continue;
+      }
+
       // Tìm đơn mua hàng khớp trong AppSheet
       let matchedPO = null;
       const MAX_PRICE_DIFF = Number(config.MAX_PRICE_DIFF || 10000);
       
-      for (const po of purchaseOrders) {
+      // Tìm tất cả các đơn mua hàng thỏa mãn điều kiện khớp tên NCC và số tiền (cho phép sai số lệch tối đa MAX_PRICE_DIFF)
+      const matchingPOs = purchaseOrders.filter(po => {
         const poName = po.Ten_NCC || po.supplier || '';
         const poTotal = Number(po.Tong_tien_mua_hang_co_VAT || po.total || 0);
+        return isCompanyMatched(poName, parsedData.tenNCC) && Math.abs(poTotal - parsedData.tongTienCoVAT) <= MAX_PRICE_DIFF;
+      });
 
-        // So khớp mềm tên nhà cung cấp và so khớp số tiền đã có VAT (cho phép sai số lệch tối đa MAX_PRICE_DIFF)
-        if (isCompanyMatched(poName, parsedData.tenNCC) && Math.abs(poTotal - parsedData.tongTienCoVAT) <= MAX_PRICE_DIFF) {
-          // Ưu tiên chọn đơn mua hàng chưa được điền số hóa đơn
-          if (!po.So_hd || po.So_hd.trim() === '') {
-            matchedPO = po;
-            break; // Tìm thấy đơn mua hàng lý tưởng nhất, dừng vòng lặp
-          } else {
-            // Lưu lại đơn mua hàng đã khớp tạm thời phòng trường hợp không tìm thấy dòng trống nào khác
-            if (!matchedPO) {
-              matchedPO = po;
-            }
-          }
-        }
+      // Lọc các đơn chưa được điền số hóa đơn
+      const emptyMatchingPOs = matchingPOs.filter(po => !po.So_hd || po.So_hd.trim() === '');
+
+      if (emptyMatchingPOs.length > 0) {
+        // Sắp xếp các đơn chưa điền theo Ngày mua hàng tăng dần (cũ nhất xếp đầu)
+        emptyMatchingPOs.sort((a, b) => {
+          const dateA = parseAppSheetDate(a.Ngay_mua_hang || a.date || '') || new Date(0);
+          const dateB = parseAppSheetDate(b.Ngay_mua_hang || b.date || '') || new Date(0);
+          return dateA - dateB;
+        });
+        
+        matchedPO = emptyMatchingPOs[0];
       }
 
       if (matchedPO) {
         const keyVal = matchedPO.So_mua_hang;
-        console.log(`[+] Tìm thấy đơn mua hàng KHỚP ĐƠN LẺ: "${keyVal}" của NCC [${matchedPO.Ten_NCC}]`);
+        console.log(`[+] Tìm thấy đơn mua hàng KHỚP ĐƠN LẺ: "${keyVal}" của NCC [${matchedPO.Ten_NCC}] (Ưu tiên đơn hàng cũ nhất)`);
         
         // 6. Cập nhật số hóa đơn và số tiền hóa đơn lên AppSheet
         const updateResult = await updateInvoiceToAppSheet(config, keyVal, parsedData);
@@ -127,7 +156,7 @@ async function runBotWorkflow() {
         }
       } else {
         // Thử đối soát tổ hợp (Hóa đơn gộp)
-        console.log(`[Đối soát] Không tìm thấy đơn mua hàng đơn lẻ khớp. Thử tìm tổ hợp gộp hóa đơn cho NCC [${parsedData.tenNCC}]...`);
+        console.log(`[Đối soát] Không tìm thấy đơn mua hàng đơn lẻ khớp chưa điền. Thử tìm tổ hợp gộp hóa đơn cho NCC [${parsedData.tenNCC}]...`);
         const unmatchedVendorPOs = purchaseOrders.filter(po => {
           const poName = po.Ten_NCC || po.supplier || '';
           const hasInvoice = po.So_hd && po.So_hd.trim() !== '';
