@@ -1,0 +1,41 @@
+name: Purchase Order Invoice Auto Bot
+
+on:
+  schedule:
+    - cron: '*/30 * * * *' # Chạy tự động mỗi 30 phút
+  workflow_dispatch: # Cho phép kích hoạt chạy thủ công trên giao diện GitHub bất cứ lúc nào
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        run: |
+          cd server
+          npm ci
+
+      - name: Install Playwright Chromium & dependencies
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Invoice Bot
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          APPSHEET_APP_ID: ${{ secrets.APPSHEET_APP_ID }}
+          APPSHEET_ACCESS_KEY: ${{ secrets.APPSHEET_ACCESS_KEY }}
+          MAX_PRICE_DIFF: ${{ secrets.MAX_PRICE_DIFF }}
+          NODE_ENV: production
+        run: node server/index.js --once

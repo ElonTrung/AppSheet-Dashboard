@@ -8,7 +8,7 @@ export default function ExecutiveSummary({
     profitByOrderId = {},
     nbStartDate, nbEndDate, setNbStartDate, setNbEndDate
 }) {
-    const [expandedOrder, setExpandedOrder] = useState(null);
+    const [hoveredOrder, setHoveredOrder] = useState(null);
 
     // Basic Aggregation Logic (Demo mixed with Real)
     const totalRevenue = dataDH.reduce((acc, row) => acc + Number(row.Tong_tien_chua_VAT_cot_ao || row.Tong_tien_chua_VAT || row.Truoc_thue || row.total || 0), 0);
@@ -183,21 +183,57 @@ export default function ExecutiveSummary({
                             {newBuyersList && newBuyersList.length > 0 ? newBuyersList.map((item, idx) => {
                                 const pInfo = profitByOrderId[item.orderId];
                                 const loiNhuan = pInfo ? pInfo.loiNhuan : 0;
-                                const isExpanded = expandedOrder === item.orderId;
+                                const isHovered = hoveredOrder === item.orderId;
                                 const orderDetails = dataCTDH.filter(ct => String(ct.So_don_hang || ct.So_bao_gia || ct.So_mua_hang || ct.id || "").trim() === item.orderId);
                                 
                                 return (
-                                <React.Fragment key={idx}>
-                                <tr 
-                                    onClick={() => setExpandedOrder(isExpanded ? null : item.orderId)} 
-                                    style={{ cursor: 'pointer', transition: 'all 0.2s', backgroundColor: isExpanded ? 'rgba(59,130,246,0.05)' : 'transparent' }}
-                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = isExpanded ? 'rgba(59,130,246,0.05)' : 'rgba(255,255,255,0.02)'}
-                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = isExpanded ? 'rgba(59,130,246,0.05)' : 'transparent'}
-                                >
+                                <tr key={idx}>
                                     <td style={{ padding: '20px', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 500 }}>
                                         {item.date ? `${String(item.date.getDate()).padStart(2, '0')}/${String(item.date.getMonth() + 1).padStart(2, '0')}/${item.date.getFullYear()}` : ''}
                                     </td>
-                                    <td style={{ padding: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>{item.orderId}</td>
+                                    <td 
+                                        style={{ padding: '20px', fontWeight: 600, color: 'var(--accent-blue)', position: 'relative', cursor: 'help' }}
+                                        onMouseEnter={() => setHoveredOrder(item.orderId)}
+                                        onMouseLeave={() => setHoveredOrder(null)}
+                                    >
+                                        <span style={{ borderBottom: '1px dashed var(--accent-blue)' }}>{item.orderId}</span>
+                                        {isHovered && (
+                                            <div className="glass-panel" style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-20%)', zIndex: 100, minWidth: '400px', maxWidth: '500px', padding: '12px', background: 'white', border: '1px solid var(--accent-blue)', borderRadius: '8px', boxShadow: '0 10px 25px rgba(59, 130, 246, 0.2)' }}>
+                                                <div style={{ fontSize: '12px', fontWeight: 'bold', borderBottom: '1px solid var(--border-glass)', paddingBottom: '8px', marginBottom: '8px', color: 'var(--accent-blue)' }}>Sản phẩm thuộc đơn: {item.orderId}</div>
+                                                {orderDetails.length > 0 ? (
+                                                    <table style={{ width: '100%', fontSize: '11px', color: 'var(--text-primary)' }}>
+                                                        <thead>
+                                                            <tr style={{ color: 'var(--text-secondary)' }}>
+                                                                <th style={{ textAlign: 'left', paddingBottom: '4px' }}>Tên Sản Phẩm</th>
+                                                                <th style={{ textAlign: 'center', paddingBottom: '4px' }}>SL</th>
+                                                                <th style={{ textAlign: 'right', paddingBottom: '4px' }}>Đơn Giá</th>
+                                                                <th style={{ textAlign: 'right', paddingBottom: '4px' }}>Thành Tiền</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {orderDetails.map((ct, cIdx) => {
+                                                                const tenSP = String(ct.Ten_san_pham || ct.Ten_sanpham || ct.Ten_hang_hoa || ct.San_pham || ct.Product || "Unknown").trim();
+                                                                const soluong = Number(ct.So_luong || ct.soluong || ct.Quantity || 1);
+                                                                let dongia = Number(ct.Don_gia || ct.Gia_ban || ct.Gia || 0);
+                                                                const ttChuaVAT = Number(ct.Thanh_tien_chua_VAT_cot_ao || ct.Thanh_tien_chua_VAT || ct.Thanh_tien_truoc_thue || ct.Truoc_thue || ct.Tong_tien_chua_VAT_cot_ao || ct.Tong_tien_chua_VAT || ct.Thanh_tien || ct.Tong_tien || ct.Total || (soluong * dongia) || 0);
+                                                                if (dongia === 0 && soluong > 0) dongia = ttChuaVAT / soluong;
+                                                                return (
+                                                                    <tr key={cIdx}>
+                                                                        <td style={{ padding: '4px 0', borderBottom: '1px dashed var(--border-glass)' }}>{tenSP}</td>
+                                                                        <td style={{ padding: '4px 0', textAlign: 'center', borderBottom: '1px dashed var(--border-glass)', fontWeight: 'bold' }}>{soluong}</td>
+                                                                        <td style={{ padding: '4px 0', textAlign: 'right', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(dongia)}</td>
+                                                                        <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 'bold', color: 'var(--accent-green)', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(ttChuaVAT)}</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                ) : (
+                                                    <div style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>Không có thông tin chi tiết</div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </td>
                                     <td style={{ padding: '20px', color: 'var(--text-secondary)' }}>{item.khachHang}</td>
                                     <td style={{ padding: '20px', textAlign: 'center', fontWeight: 'bold', color: item.waitDays !== "N/A" ? (item.waitDays > 3 ? '#ef4444' : '#10b981') : 'var(--text-secondary)' }}>
                                         {item.waitDays !== "N/A" ? `${item.waitDays} ngày` : "-"}
@@ -214,50 +250,6 @@ export default function ExecutiveSummary({
                                         </span>
                                     </td>
                                 </tr>
-                                {isExpanded && orderDetails.length > 0 && (
-                                    <tr>
-                                        <td colSpan={7} style={{ padding: '0 24px 24px 24px', backgroundColor: 'rgba(59,130,246,0.02)' }}>
-                                            <div style={{ padding: '16px', background: 'var(--bg-glass)', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-                                                <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '12px', color: 'var(--accent-blue)' }}>Chi tiết sản phẩm đơn hàng: {item.orderId}</div>
-                                                <table style={{ width: '100%', fontSize: '12px' }}>
-                                                    <thead>
-                                                        <tr style={{ color: 'var(--text-secondary)', borderBottom: '1px dashed var(--border-glass)' }}>
-                                                            <th style={{ textAlign: 'left', paddingBottom: '8px' }}>Tên Sản Phẩm</th>
-                                                            <th style={{ textAlign: 'center', paddingBottom: '8px' }}>Số Lượng</th>
-                                                            <th style={{ textAlign: 'right', paddingBottom: '8px' }}>Đơn Giá</th>
-                                                            <th style={{ textAlign: 'right', paddingBottom: '8px' }}>Thành Tiền</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {orderDetails.map((ct, cIdx) => {
-                                                            const tenSP = String(ct.Ten_san_pham || ct.Ten_sanpham || ct.Ten_hang_hoa || ct.San_pham || ct.Product || "Unknown").trim();
-                                                            const soluong = Number(ct.So_luong || ct.soluong || ct.Quantity || 1);
-                                                            let dongia = Number(ct.Don_gia || ct.Gia_ban || ct.Gia || 0);
-                                                            const ttChuaVAT = Number(ct.Thanh_tien_chua_VAT_cot_ao || ct.Thanh_tien_chua_VAT || ct.Thanh_tien_truoc_thue || ct.Truoc_thue || ct.Tong_tien_chua_VAT_cot_ao || ct.Tong_tien_chua_VAT || ct.Thanh_tien || ct.Tong_tien || ct.Total || (soluong * dongia) || 0);
-                                                            if (dongia === 0 && soluong > 0) dongia = ttChuaVAT / soluong;
-                                                            return (
-                                                                <tr key={cIdx}>
-                                                                    <td style={{ padding: '8px 0', borderBottom: '1px dashed var(--border-glass)' }}>{tenSP}</td>
-                                                                    <td style={{ padding: '8px 0', textAlign: 'center', borderBottom: '1px dashed var(--border-glass)', fontWeight: 'bold' }}>{soluong}</td>
-                                                                    <td style={{ padding: '8px 0', textAlign: 'right', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(dongia)}</td>
-                                                                    <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 'bold', color: 'var(--accent-green)', borderBottom: '1px dashed var(--border-glass)' }}>{new Intl.NumberFormat('vi-VN').format(ttChuaVAT)}</td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                                {isExpanded && orderDetails.length === 0 && (
-                                    <tr>
-                                        <td colSpan={7} style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', backgroundColor: 'rgba(59,130,246,0.02)' }}>
-                                            Không có chi tiết sản phẩm cho đơn hàng này.
-                                        </td>
-                                    </tr>
-                                )}
-                                </React.Fragment>
                                 )
                             }) : (
                                 <tr>

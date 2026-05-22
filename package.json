@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bot": "node server/index.js",
+    "bot:once": "node server/index.js --once",
+    "bot:test-email": "node server/test-email.js",
+    "bot:test-crawler": "node server/test-crawler.js",
+    "bot:test-appsheet": "node server/test-appsheet.js"
   },
   "dependencies": {
     "lucide-react": "^1.7.0",

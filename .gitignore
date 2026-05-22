@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Server bot ignores
+server/.env
+server/node_modules/
+server/downloads/
+server/archive/
+
