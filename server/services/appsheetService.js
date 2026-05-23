@@ -166,6 +166,20 @@ export function isCompanyMatched(name1, name2) {
 }
 
 /**
+ * Chuẩn hóa số hóa đơn để so khớp chính xác (loại bỏ khoảng trắng, ký tự đặc biệt và các số 0 ở đầu)
+ * Ví dụ: "00003727" -> "3727", "HD-0003727" -> "HD3727"
+ * @param {string|number} invNo 
+ * @returns {string} Số hóa đơn đã chuẩn hóa
+ */
+export function normalizeInvoiceNo(invNo) {
+  if (!invNo) return '';
+  const str = String(invNo).trim().toLowerCase();
+  // Loại bỏ các chữ số 0 ở đầu tiên và các ký tự không phải chữ/số
+  return str.replace(/^0+/, '').replace(/[^a-z0-9]/g, '');
+}
+
+
+/**
  * Lấy danh sách toàn bộ Đơn mua hàng từ bảng "muahang" của AppSheet
  * @param {object} config Cấu hình chứa API Key và App ID
  * @returns {Promise<Array>} Danh sách các dòng mua hàng
@@ -217,7 +231,7 @@ export async function getAppSheetPurchaseOrders(config) {
  * @param {object} invoiceData Thông tin hóa đơn bóc tách được (soHoaDon, tongTienCoVAT)
  * @returns {Promise<object>} Kết quả cập nhật { success: true/false, data/error }
  */
-export async function updateInvoiceToAppSheet(config, purchaseOrderKeys, invoiceData) {
+export async function updateInvoiceToAppSheet(config, purchaseOrderKeys, invoiceData, correctVendorName = null) {
   const appId = config.APPSHEET_APP_ID || 'e488fb86-d7f7-4dd2-970d-8246e1a05eee';
   const accessKey = config.APPSHEET_ACCESS_KEY || 'V2-WQdVR-MbOzC-ROAZT-aYCDs-NjjEo-nEp0D-VuZ4U-nVdeQ';
   const tableName = 'muahang';
@@ -225,11 +239,17 @@ export async function updateInvoiceToAppSheet(config, purchaseOrderKeys, invoice
   const url = `https://api.appsheet.com/api/v2/apps/${appId}/tables/${tableName}/Action`;
 
   const keys = Array.isArray(purchaseOrderKeys) ? purchaseOrderKeys : [purchaseOrderKeys];
-  const rowsToUpdate = keys.map(key => ({
-    "So_mua_hang": key, // Khóa chính
-    "So_hd": invoiceData.soHoaDon, // Điền số hóa đơn
-    "So_tien_hoa_don": Number(invoiceData.tongTienCoVAT) // Điền số tiền có VAT trong hóa đơn
-  }));
+  const rowsToUpdate = keys.map(key => {
+    const row = {
+      "So_mua_hang": key, // Khóa chính
+      "So_hd": invoiceData.soHoaDon, // Điền số hóa đơn
+      "So_tien_hoa_don": Number(invoiceData.tongTienCoVAT) // Điền số tiền có VAT trong hóa đơn
+    };
+    if (correctVendorName) {
+      row["Ten_NCC"] = correctVendorName;
+    }
+    return row;
+  });
 
   const payload = {
     "Action": "Edit",

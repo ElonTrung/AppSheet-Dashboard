@@ -15,7 +15,8 @@ import {
   updateInvoiceToAppSheet, 
   isCompanyMatched,
   findMatchingCombination,
-  parseAppSheetDate
+  parseAppSheetDate,
+  normalizeInvoiceNo
 } from './services/appsheetService.js';
 
 const config = process.env;
@@ -28,6 +29,17 @@ async function runBotWorkflow() {
   console.log(`[BOT ACTIVE] Khởi động phiên quét hóa đơn tự động...`);
   console.log(`Thời gian chạy: ${new Date().toLocaleString('vi-VN')}`);
   console.log(`======================================================`);
+
+  // Tải file cache để tránh cào lại XML đã bóc tách thành công
+  const cacheFilePath = path.resolve('./server/invoice_cache.json');
+  let cache = {};
+  if (fs.existsSync(cacheFilePath)) {
+    try {
+      cache = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
+    } catch (e) {
+      console.warn('[Cache] Lỗi đọc file cache, tạo mới:', e.message);
+    }
+  }
 
   // 1. Quét email lấy thông tin tra cứu từ 50 email gần nhất
   const pendingInvoices = await fetchInvoiceEmails(config);
@@ -52,24 +64,43 @@ async function runBotWorkflow() {
       console.log(`\n------------------------------------------------------`);
       console.log(`Đang xử lý thư: "${invoice.subject}"`);
       
-      // 3. Chạy giả lập trình duyệt tải XML hóa đơn gốc về máy
-      const xmlFilePath = await downloadInvoiceXml(invoice);
-      
-      if (!xmlFilePath) {
-        console.error(`[-] Bỏ qua hóa đơn này vì tải file XML thất bại.`);
-        failCount++;
-        continue;
-      }
+      const emailUid = String(invoice.emailUid);
+      let parsedData = null;
+      let xmlFilePath = null;
 
-      // 4. Đọc dữ liệu từ file XML
-      const parsedData = parseInvoiceXml(xmlFilePath);
-      
-      if (!parsedData) {
-        console.error(`[-] Bỏ qua hóa đơn vì parse nội dung XML thất bại.`);
-        // Xóa file lỗi để dọn dẹp bộ nhớ tạm
-        try { fs.unlinkSync(xmlFilePath); } catch (e) {}
-        failCount++;
-        continue;
+      // Kiểm tra cache xem email này đã từng được bóc tách XML chưa
+      if (cache[emailUid]) {
+        console.log(`[Cache] Phát hiện dữ liệu bóc tách sẵn trong cache cho email UID: ${emailUid}`);
+        parsedData = cache[emailUid];
+      } else {
+        // 3. Chạy giả lập trình duyệt tải XML hóa đơn gốc về máy
+        xmlFilePath = await downloadInvoiceXml(invoice);
+        
+        if (!xmlFilePath) {
+          console.error(`[-] Bỏ qua hóa đơn này vì tải file XML thất bại.`);
+          failCount++;
+          continue;
+        }
+
+        // 4. Đọc dữ liệu từ file XML
+        parsedData = parseInvoiceXml(xmlFilePath);
+        
+        if (!parsedData) {
+          console.error(`[-] Bỏ qua hóa đơn vì parse nội dung XML thất bại.`);
+          // Xóa file lỗi để dọn dẹp bộ nhớ tạm
+          try { fs.unlinkSync(xmlFilePath); } catch (e) {}
+          failCount++;
+          continue;
+        }
+
+        // Lưu vào cache để lần sau không cào lại nữa
+        cache[emailUid] = parsedData;
+        try {
+          fs.writeFileSync(cacheFilePath, JSON.stringify(cache, null, 2), 'utf8');
+          console.log(`[Cache] Đã lưu thông tin bóc tách vào cache cho email UID: ${emailUid}`);
+        } catch (e) {
+          console.error('[Cache] Lỗi ghi file cache:', e.message);
+        }
       }
 
       // 5. Đối soát thông tin hóa đơn với danh sách Đơn mua hàng từ AppSheet
@@ -81,22 +112,25 @@ async function runBotWorkflow() {
       const isAlreadySynced = purchaseOrders.some(po => {
         const poName = po.Ten_NCC || po.supplier || '';
         const poInvNo = po.So_hd || po.InvNo || '';
-        return isCompanyMatched(poName, parsedData.tenNCC) && poInvNo.trim() === parsedData.soHoaDon.trim();
+        return isCompanyMatched(poName, parsedData.tenNCC) && 
+               normalizeInvoiceNo(poInvNo) === normalizeInvoiceNo(parsedData.soHoaDon);
       });
 
       if (isAlreadySynced) {
         console.log(`[Đối soát] Hóa đơn số ${parsedData.soHoaDon} của NCC [${parsedData.tenNCC}] đã được đồng bộ trước đó. Bỏ qua.`);
         // Lưu trữ/di chuyển file XML vào thư mục lưu trữ nếu chưa có
         try {
-          const archiveDir = path.resolve('./server/archive');
-          if (!fs.existsSync(archiveDir)) {
-            fs.mkdirSync(archiveDir, { recursive: true });
-          }
-          const archivePath = path.join(archiveDir, path.basename(xmlFilePath));
-          if (!fs.existsSync(archivePath)) {
-            fs.renameSync(xmlFilePath, archivePath);
-          } else {
-            fs.unlinkSync(xmlFilePath);
+          if (xmlFilePath && fs.existsSync(xmlFilePath)) {
+            const archiveDir = path.resolve('./server/archive');
+            if (!fs.existsSync(archiveDir)) {
+              fs.mkdirSync(archiveDir, { recursive: true });
+            }
+            const archivePath = path.join(archiveDir, path.basename(xmlFilePath));
+            if (!fs.existsSync(archivePath)) {
+              fs.renameSync(xmlFilePath, archivePath);
+            } else {
+              fs.unlinkSync(xmlFilePath);
+            }
           }
         } catch (e) {}
         successCount++;
@@ -133,7 +167,7 @@ async function runBotWorkflow() {
         console.log(`[+] Tìm thấy đơn mua hàng KHỚP ĐƠN LẺ: "${keyVal}" của NCC [${matchedPO.Ten_NCC}] (Ưu tiên đơn hàng cũ nhất)`);
         
         // 6. Cập nhật số hóa đơn và số tiền hóa đơn lên AppSheet
-        const updateResult = await updateInvoiceToAppSheet(config, keyVal, parsedData);
+        const updateResult = await updateInvoiceToAppSheet(config, keyVal, parsedData, matchedPO.Ten_NCC);
         
         if (updateResult.success) {
           successCount++;
@@ -143,13 +177,15 @@ async function runBotWorkflow() {
           matchedPO.So_tien_hoa_don = Number(parsedData.tongTienCoVAT);
 
           // Lưu trữ file XML đã xử lý
-          const archiveDir = path.resolve('./server/archive');
-          if (!fs.existsSync(archiveDir)) {
-            fs.mkdirSync(archiveDir, { recursive: true });
+          if (xmlFilePath && fs.existsSync(xmlFilePath)) {
+            const archiveDir = path.resolve('./server/archive');
+            if (!fs.existsSync(archiveDir)) {
+              fs.mkdirSync(archiveDir, { recursive: true });
+            }
+            const archivePath = path.join(archiveDir, path.basename(xmlFilePath));
+            fs.renameSync(xmlFilePath, archivePath);
+            console.log(`[+] Đã lưu trữ file XML vào thư mục: ${archivePath}`);
           }
-          const archivePath = path.join(archiveDir, path.basename(xmlFilePath));
-          fs.renameSync(xmlFilePath, archivePath);
-          console.log(`[+] Đã lưu trữ file XML vào thư mục: ${archivePath}`);
         } else {
           console.error(`[-] Cập nhật lên AppSheet thất bại cho hóa đơn này.`);
           failCount++;
@@ -170,7 +206,7 @@ async function runBotWorkflow() {
           console.log(`[+] Tìm thấy TỔ HỢP đơn hàng khớp gộp: [${keys.join(', ')}]`);
           
           // Cập nhật số hóa đơn và số tiền hóa đơn lên AppSheet cho toàn bộ tổ hợp
-          const updateResult = await updateInvoiceToAppSheet(config, keys, parsedData);
+          const updateResult = await updateInvoiceToAppSheet(config, keys, parsedData, matchedCombo[0].Ten_NCC);
           
           if (updateResult.success) {
             successCount++;
@@ -182,13 +218,15 @@ async function runBotWorkflow() {
             }
 
             // Lưu trữ file XML đã xử lý
-            const archiveDir = path.resolve('./server/archive');
-            if (!fs.existsSync(archiveDir)) {
-              fs.mkdirSync(archiveDir, { recursive: true });
+            if (xmlFilePath && fs.existsSync(xmlFilePath)) {
+              const archiveDir = path.resolve('./server/archive');
+              if (!fs.existsSync(archiveDir)) {
+                fs.mkdirSync(archiveDir, { recursive: true });
+              }
+              const archivePath = path.join(archiveDir, path.basename(xmlFilePath));
+              fs.renameSync(xmlFilePath, archivePath);
+              console.log(`[+] Đã lưu trữ file XML vào thư mục: ${archivePath}`);
             }
-            const archivePath = path.join(archiveDir, path.basename(xmlFilePath));
-            fs.renameSync(xmlFilePath, archivePath);
-            console.log(`[+] Đã lưu trữ file XML vào thư mục: ${archivePath}`);
           } else {
             console.error(`[-] Cập nhật lên AppSheet thất bại cho tổ hợp hóa đơn này.`);
             failCount++;
@@ -199,7 +237,11 @@ async function runBotWorkflow() {
           console.warn(`    - Số tiền: ${parsedData.tongTienCoVAT.toLocaleString('vi-VN')} VND`);
           
           // Xóa file XML tạm
-          try { fs.unlinkSync(xmlFilePath); } catch (e) {}
+          try {
+            if (xmlFilePath && fs.existsSync(xmlFilePath)) {
+              fs.unlinkSync(xmlFilePath);
+            }
+          } catch (e) {}
           failCount++;
         }
       }

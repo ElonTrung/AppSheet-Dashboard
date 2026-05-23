@@ -5,12 +5,28 @@ import * as cheerio from 'cheerio';
 // Danh sách các từ khóa lọc email hóa đơn
 const INVOICE_SUBJECT_KEYWORDS = ['hóa đơn', 'hoa don', 'invoice', 'tra cứu', 'tra cuu'];
 
+// Danh sách các từ khóa loại trừ email hóa đơn đầu ra của chính công ty gửi đi
+const INVOICE_SUBJECT_EXCLUDE_KEYWORDS = [
+  'tín thịnh gửi',
+  'tin thinh gui',
+  'tín thịnh gởi',
+  'tin thinh goi',
+  'chi nhánh hà nội gửi',
+  'chi nhanh ha noi gui',
+  'chi nhánh hà nội gởi',
+  'chi nhanh ha noi goi'
+];
+
 // Biểu thức Regex quét link tra cứu hóa đơn phổ biến tại VN
-const LOOKUP_URL_REGEX = /https?:\/\/(?:www\.)?(?:[a-zA-Z0-9-]+\.)*(?:meinvoice\.vn|einvoice\.vn|einvoice\.com\.vn|sinvoice\.viettel\.vn|hoadondientu\.gdt\.gov\.vn|vnpt-invoice\.com\.vn|invoice\.vnpt\.vn|hoadondientu\.vn|e-invoice\.com\.vn|bkav\.com\.vn|hdbdt\.vnpt\.vn|cyberbill\.vn|smartvas\.com\.vn|vinaeinvoice\.vn|minvoice\.vn)[^\s"'><]*/gi;
+const LOOKUP_URL_REGEX = /https?:\/\/(?:www\.)?(?:[a-zA-Z0-9-]+\.)*(?:meinvoice\.vn|einvoice\.vn|einvoice\.com\.vn|(?:sinvoice|vinvoice)\.viettel\.vn|hoadondientu\.gdt\.gov\.vn|vnpt-invoice\.com\.vn|invoice\.vnpt\.vn|hoadondientu\.vn|e-invoice\.com\.vn|bkav\.com\.vn|hdbdt\.vnpt\.vn|cyberbill\.vn|smartvas\.com\.vn|vinaeinvoice\.vn|minvoice\.vn|vin-hoadon\.com|vin-hoadon\.vn)[^\s"'><]*/gi;
 
 // Biểu thức Regex quét mã tra cứu/mã nhận hóa đơn
 // Thường là chuỗi chữ-số độ dài khoảng 6-12 ký tự ngẫu nhiên đi kèm tiêu đề
 const LOOKUP_CODE_KEYWORDS = [
+  /mã\s+số\s+bí\s+mật[\s:]+([a-z0-9\-]{4,30})/i,
+  /ma\s+so\s+bi\s+mat[\s:]+([a-z0-9\-]{4,30})/i,
+  /mã\s+số\s+bảo\s+mật[\s:]+([a-z0-9\-]{4,30})/i,
+  /ma\s+so\s+bao\s+mat[\s:]+([a-z0-9\-]{4,30})/i,
   /mã\s+tra\s+cứu\s+hóa\s+đơn[\s:]+([a-z0-9\-]{4,30})/i,
   /ma\s+tra\s+cuu\s+hoa\s+don[\s:]+([a-z0-9\-]{4,30})/i,
   /mã\s+tra\s+cứu[\s:]+([a-z0-9\-]{4,30})/i,
@@ -181,37 +197,57 @@ export async function fetchInvoiceEmails(config) {
     // Mở hộp thư đến (INBOX) ở chế độ ghi (để có thể đánh dấu đã đọc sau khi xử lý)
     const lock = await client.getMailboxLock('INBOX');
     try {
-      // 1. Quét danh sách thư chưa đọc (unseen)
-      console.log('Đang quét danh sách thư chưa đọc...');
-      const unseenMessages = await client.search({ unseen: true });
-      console.log(`Tìm thấy ${unseenMessages.length} thư chưa đọc.`);
+      // 1. Quét danh sách thư chưa đọc (unseen) trong vòng 15 ngày qua để tránh quét hàng nghìn thư cũ từ nhiều năm trước
+      console.log('Đang quét danh sách thư chưa đọc trong 15 ngày qua...');
+      const fifteenDaysAgo = new Date();
+      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+      
+      const unseenMessages = await client.search({ unseen: true, since: fifteenDaysAgo });
+      console.log(`Tìm thấy ${unseenMessages.length} thư chưa đọc trong vòng 15 ngày gần đây.`);
 
-      // 2. Quét danh sách tất cả các thư để lấy 100 thư gần nhất
-      console.log('Đang quét danh sách 100 thư gần nhất...');
+      // 2. Quét danh sách tất cả các thư để lấy 30 thư gần nhất (phục vụ đối soát lại hóa đơn cũ chưa khớp)
+      console.log('Đang quét danh sách 30 thư gần nhất...');
       const allMessages = await client.search({ all: true });
-      const recentMessages = allMessages.slice(-100);
+      const recentMessages = allMessages.slice(-30);
 
       // Gộp danh sách, loại bỏ trùng lặp UID và đảo ngược để thư mới nhất được xử lý trước
       const combinedMessages = Array.from(new Set([...unseenMessages, ...recentMessages])).reverse();
-      console.log(`Sẽ tiến hành kiểm tra ${combinedMessages.length} thư (gồm thư chưa đọc và 100 thư gần nhất).`);
+      console.log(`Sẽ tiến hành kiểm tra ${combinedMessages.length} thư (gồm thư chưa đọc gần đây và 30 thư gần nhất).`);
 
-      for (const uid of combinedMessages) {
-        // Tải nội dung email thô
-        const messageData = await client.fetchOne(uid, { source: true, envelope: true });
-        
-        if (!messageData || !messageData.source) continue;
+      console.log('Đang tải trước danh sách envelope theo lô (batch)...');
+      const envelopes = [];
+      const batchSize = 500;
+      for (let i = 0; i < combinedMessages.length; i += batchSize) {
+        const batch = combinedMessages.slice(i, i + batchSize);
+        for await (const msg of client.fetch(batch, { envelope: true })) {
+          envelopes.push(msg);
+        }
+      }
+      console.log(`Đã tải xong ${envelopes.length} envelopes.`);
+
+      for (const msg of envelopes) {
+        const seq = msg.seq;
+        const uid = msg.uid;
+        if (!seq || !msg.envelope) continue;
 
         // Lấy tiêu đề và người gửi để kiểm tra xem có phải email hóa đơn không
-        const subject = messageData.envelope.subject || '';
-        const from = messageData.envelope.from ? messageData.envelope.from[0].address : '';
-        const subjectLower = subject.toLowerCase();
+        const subject = msg.envelope.subject || '';
+        const from = msg.envelope.from ? msg.envelope.from[0].address : '';
+        const subjectLower = subject.toLowerCase().replace(/\s+/g, ' ');
 
         // Kiểm tra xem tiêu đề email có chứa các từ khóa hóa đơn không
         const isInvoiceEmail = INVOICE_SUBJECT_KEYWORDS.some(kw => subjectLower.includes(kw));
+        
+        // Bỏ qua các email hóa đơn đầu ra gửi cho khách hàng
+        const isExcluded = INVOICE_SUBJECT_EXCLUDE_KEYWORDS.some(kw => subjectLower.includes(kw));
 
-        if (isInvoiceEmail) {
+        if (isInvoiceEmail && !isExcluded) {
           console.log(`>>> Phát hiện Email hóa đơn đầu vào: "${subject}" từ [${from}]`);
           
+          // 2. Chỉ tải full source khi chắc chắn đây là email hóa đơn
+          const messageData = await client.fetchOne(seq, { source: true });
+          if (!messageData || !messageData.source) continue;
+
           // Parse nội dung email thô
           const parsed = await simpleParser(messageData.source);
           const htmlContent = parsed.html || '';
@@ -227,13 +263,13 @@ export async function fetchInvoiceEmails(config) {
               emailUid: uid,
               subject: subject,
               sender: from,
-              date: messageData.envelope.date,
+              date: msg.envelope.date,
               ...invoiceInfo
             });
 
             // Đánh dấu thư đã đọc (SEEN) sau khi đã quét thành công thông tin tra cứu
-            await client.messageFlagsAdd(uid, ['\\Seen']);
-            console.log(`  + Đã đánh dấu Đã Đọc cho email UID: ${uid}`);
+            await client.messageFlagsAdd(seq, ['\\Seen']);
+            console.log(`  + Đã đánh dấu Đã Đọc cho email Seq: ${seq} (UID: ${uid})`);
           } else {
             console.log(`  - Không trích xuất được link tra cứu từ email này.`);
           }

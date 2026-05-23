@@ -19,6 +19,14 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Restore Invoice Cache
+        uses: actions/cache@v4
+        with:
+          path: server/invoice_cache.json
+          key: invoice-cache-${{ github.run_id }}
+          restore-keys: |
+            invoice-cache-
+
       - name: Install root dependencies
         run: npm ci
 
