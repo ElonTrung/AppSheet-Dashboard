@@ -154,9 +154,9 @@ export function extractInvoiceDetails(htmlBody, textBody = '') {
 
   // 5. Trích xuất Mã số thuế người bán (sellerMst) - phục vụ cho M-Invoice/Bình Minh
   const mstRegexes = [
-    /(?:mã\s+số\s+thuế\s+của\s+Đơn\s+vị\s+bán|ma\s+so\s+thue\s+cua\s+don\s+vi\s+ban|mã\s+số\s+thuế\s+đơn\s+vị\s+bán|ma\s+so\s+thue\s+don\s+vi\s+ban|mã\s+số\s+thuế\s+người\s+bán|ma\s+so\s+thue\s+nguoi\s+ban|mã\s+số\s+thuế\s+bên\s+bán|ma\s+so\s+thue\s+ben\s+ban)[\s:]+(\d+)/i,
-    /mst\s+(?:đơn\s+vị\s+bán|don\s+vi\s+ban|người\s+bán|nguoi\s+ban|bên\s+bán|ben\s+ban)[\s:]+(\d+)/i,
-    /(?:mã\s+số\s+thuế|ma\s+so\s+thue|mst)[\s:]+(\d{10,13})/i
+    /(?:mã\s+số\s+thuế\s+của\s+Đơn\s+vị\s+bán|ma\s+so\s+thue\s+cua\s+don\s+vi\s+ban|mã\s+số\s+thuế\s+đơn\s+vị\s+bán|ma\s+so\s+thue\s+don\s+vi\s+ban|mã\s+số\s+thuế\s+người\s+bán|ma\s+so\s+thue\s+nguoi\s+ban|mã\s+số\s+thuế\s+bên\s+bán|ma\s+so\s+thue\s+ben\s+ban)[\s:]+([0-9\-]+)/i,
+    /mst\s+(?:đơn\s+vị\s+bán|don\s+vi\s+ban|người\s+bán|nguoi\s+ban|bên\s+bán|ben\s+ban)[\s:]+([0-9\-]+)/i,
+    /(?:mã\s+số\s+thuế|ma\s+so\s+thue|mst)[\s:]+([0-9\-]{10,15})/i
   ];
 
   for (const regex of mstRegexes) {
