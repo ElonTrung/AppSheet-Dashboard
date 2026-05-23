@@ -18,37 +18,37 @@ const INVOICE_SUBJECT_EXCLUDE_KEYWORDS = [
 ];
 
 // Biểu thức Regex quét link tra cứu hóa đơn phổ biến tại VN
-const LOOKUP_URL_REGEX = /https?:\/\/(?:www\.)?(?:[a-zA-Z0-9-]+\.)*(?:meinvoice\.vn|einvoice\.vn|einvoice\.com\.vn|(?:sinvoice|vinvoice)\.viettel\.vn|hoadondientu\.gdt\.gov\.vn|vnpt-invoice\.com\.vn|invoice\.vnpt\.vn|hoadondientu\.vn|e-invoice\.com\.vn|bkav\.com\.vn|hdbdt\.vnpt\.vn|cyberbill\.vn|smartvas\.com\.vn|vinaeinvoice\.vn|minvoice\.vn|vin-hoadon\.com|vin-hoadon\.vn)[^\s"'><]*/gi;
+const LOOKUP_URL_REGEX = /https?:\/\/(?:www\.)?(?:[a-zA-Z0-9-]+\.)*(?:meinvoice\.vn|einvoice\.vn|einvoice\.com\.vn|(?:sinvoice|vinvoice)\.viettel\.vn|hoadondientu\.gdt\.gov\.vn|vnpt-invoice\.com\.vn|invoice\.vnpt\.vn|hoadondientu\.vn|e-invoice\.com\.vn|bkav\.com\.vn|hdbdt\.vnpt\.vn|cyberbill\.vn|smartvas\.com\.vn|vinaeinvoice\.vn|minvoice\.vn|vin-hoadon\.com|vin-hoadon\.vn|easyinvoice\.vn)[^\s"'><]*/gi;
 
 // Biểu thức Regex quét mã tra cứu/mã nhận hóa đơn
 // Thường là chuỗi chữ-số độ dài khoảng 6-12 ký tự ngẫu nhiên đi kèm tiêu đề
 const LOOKUP_CODE_KEYWORDS = [
-  /mã\s+số\s+bí\s+mật[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+so\s+bi\s+mat[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+số\s+bảo\s+mật[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+so\s+bao\s+mat[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+tra\s+cứu\s+hóa\s+đơn[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+tra\s+cuu\s+hoa\s+don[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+tra\s+cứu[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+tra\s+cuu[\s:]+([a-z0-9\-]{4,30})/i,
-  /số\s+bảo\s+mật[\s:]+([a-z0-9\-]{4,30})/i,
-  /so\s+bao\s+mat[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+nhận\s+hóa\s+đơn[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+nhan\s+hoa\s+don[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+nhận[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+nhan[\s:]+([a-z0-9\-]{4,30})/i,
-  /mật\s+khẩu\s+tra\s+cứu[\s:]+([a-z0-9\-]{4,30})/i,
-  /mat\s+khau\s+tra\s+cuu[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+bảo\s+mật[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+bao\s+mat[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+số\s+tra\s+cứu[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+so\s+tra\s+cuu[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+truy\s+cập[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+truy\s+cap[\s:]+([a-z0-9\-]{4,30})/i,
-  /nhập\s+mã\s+số[\s:]+([a-z0-9\-]{4,30})/i,
-  /nhap\s+ma\s+so[\s:]+([a-z0-9\-]{4,30})/i,
-  /mã\s+số(?![\s]*thuế)[\s:]+([a-z0-9\-]{4,30})/i,
-  /ma\s+so(?![\s]*thue)[\s:]+([a-z0-9\-]{4,30})/i
+  /mã\s+số\s+bí\s+mật[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+so\s+bi\s+mat[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+số\s+bảo\s+mật[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+so\s+bao\s+mat[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+tra\s+cứu\s+hóa\s+đơn[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+tra\s+cuu\s+hoa\s+don[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+tra\s+cứu[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+tra\s+cuu[\s:]+([a-z0-9\-]{4,45})/i,
+  /số\s+bảo\s+mật[\s:]+([a-z0-9\-]{4,45})/i,
+  /so\s+bao\s+mat[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+nhận\s+hóa\s+đơn[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+nhan\s+hoa\s+don[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+nhận[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+nhan[\s:]+([a-z0-9\-]{4,45})/i,
+  /mật\s+khẩu\s+tra\s+cứu[\s:]+([a-z0-9\-]{4,45})/i,
+  /mat\s+khau\s+tra\s+cuu[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+bảo\s+mật[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+bao\s+mat[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+số\s+tra\s+cứu[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+so\s+tra\s+cuu[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+truy\s+cập[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+truy\s+cap[\s:]+([a-z0-9\-]{4,45})/i,
+  /nhập\s+mã\s+số[\s:]+([a-z0-9\-]{4,45})/i,
+  /nhap\s+ma\s+so[\s:]+([a-z0-9\-]{4,45})/i,
+  /mã\s+số(?![\s]*thuế)[\s:]+([a-z0-9\-]{4,45})/i,
+  /ma\s+so(?![\s]*thue)[\s:]+([a-z0-9\-]{4,45})/i
 ];
 
 /**
