@@ -245,9 +245,6 @@ export async function updateInvoiceToAppSheet(config, purchaseOrderKeys, invoice
       "So_hd": invoiceData.soHoaDon, // Điền số hóa đơn
       "So_tien_hoa_don": Number(invoiceData.tongTienCoVAT) // Điền số tiền có VAT trong hóa đơn
     };
-    if (correctVendorName) {
-      row["Ten_NCC"] = correctVendorName;
-    }
     return row;
   });
 

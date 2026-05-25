@@ -62,8 +62,29 @@ export async function downloadInvoiceXml(invoice) {
     } else if (provider === 'MINVOICE') {
       await handleMInvoice(page, lookupCode, sellerMst);
     } else {
-      // Trường hợp nhà cung cấp chung/chưa xác định cụ thể
-      await handleGenericInvoice(page, lookupCode);
+      // CẢI TIẾN: Trước khi chạy cào chung, kiểm tra xem nút tải XML đã hiển thị sẵn chưa!
+      // Nếu đã có sẵn nút tải XML, tức là link trực tiếp đã load xong hóa đơn, không cần điền input nữa!
+      const quickSelectors = [
+        'button:has-text("XML")', 
+        'a:has-text("XML")', 
+        '.btn-download-xml', 
+        '#btnDownloadXml',
+        'button:has-text("Tải tệp XML")'
+      ];
+      let alreadyVisible = false;
+      for (const selector of quickSelectors) {
+        const el = await page.$(selector);
+        if (el && await el.isVisible()) {
+          alreadyVisible = true;
+          console.log(`  + Phát hiện hóa đơn đã tải sẵn (Nút tải visible: "${selector}"). Bỏ qua điền form.`);
+          break;
+        }
+      }
+      
+      if (!alreadyVisible) {
+        // Trường hợp nhà cung cấp chung/chưa xác định cụ thể
+        await handleGenericInvoice(page, lookupCode);
+      }
     }
 
     // 3. Tiến hành tìm kiếm nút tải xuống XML

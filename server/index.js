@@ -73,8 +73,14 @@ async function runBotWorkflow() {
         console.log(`[Cache] Phát hiện dữ liệu bóc tách sẵn trong cache cho email UID: ${emailUid}`);
         parsedData = cache[emailUid];
       } else {
-        // 3. Chạy giả lập trình duyệt tải XML hóa đơn gốc về máy
-        xmlFilePath = await downloadInvoiceXml(invoice);
+        // [DUAL-FALLBACK] Phương án A: Sử dụng trực tiếp file XML đính kèm từ email nếu có
+        if (invoice.attachmentXmlPath && fs.existsSync(invoice.attachmentXmlPath)) {
+          console.log(`[Email Attachment] Sử dụng trực tiếp tệp XML đính kèm từ email (Bypass Playwright): ${invoice.attachmentXmlPath}`);
+          xmlFilePath = invoice.attachmentXmlPath;
+        } else {
+          // Phương án B (Dự phòng): Khởi chạy trình duyệt Playwright cào link tra cứu
+          xmlFilePath = await downloadInvoiceXml(invoice);
+        }
         
         if (!xmlFilePath) {
           console.error(`[-] Bỏ qua hóa đơn này vì tải file XML thất bại.`);

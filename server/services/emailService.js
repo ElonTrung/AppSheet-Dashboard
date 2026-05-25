@@ -1,9 +1,11 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import * as cheerio from 'cheerio';
+import fs from 'fs';
+import path from 'path';
 
 // Danh sách các từ khóa lọc email hóa đơn
-const INVOICE_SUBJECT_KEYWORDS = ['hóa đơn', 'hoa don', 'invoice', 'tra cứu', 'tra cuu'];
+const INVOICE_SUBJECT_KEYWORDS = ['hóa đơn', 'hoa don', 'invoice', 'tra cứu', 'tra cuu', 'hđđt', 'hddt'];
 
 // Danh sách các từ khóa loại trừ email hóa đơn đầu ra của chính công ty gửi đi
 const INVOICE_SUBJECT_EXCLUDE_KEYWORDS = [
@@ -86,8 +88,9 @@ export function extractInvoiceDetails(htmlBody, textBody = '') {
   }
 
   if (urlMatches && urlMatches.length > 0) {
-    // Ưu tiên link dài hơn (thường chứa token trực tiếp)
-    const bestUrl = urlMatches.reduce((a, b) => a.length > b.length ? a : b);
+    // Ưu tiên link chứa cụm từ ViewFromEmail (để tránh CAPTCHA trên EasyInvoice)
+    const viewFromEmailUrl = urlMatches.find(url => url.includes('ViewFromEmail'));
+    const bestUrl = viewFromEmailUrl || urlMatches.reduce((a, b) => a.length > b.length ? a : b);
     
     // Giải mã HTML entities (như &amp; thành &)
     const decodedUrl = bestUrl.replace(/&amp;/g, '&');
@@ -205,14 +208,14 @@ export async function fetchInvoiceEmails(config) {
       const unseenMessages = await client.search({ unseen: true, since: fifteenDaysAgo });
       console.log(`Tìm thấy ${unseenMessages.length} thư chưa đọc trong vòng 15 ngày gần đây.`);
 
-      // 2. Quét danh sách tất cả các thư để lấy 30 thư gần nhất (phục vụ đối soát lại hóa đơn cũ chưa khớp)
-      console.log('Đang quét danh sách 30 thư gần nhất...');
+      // 2. Quét danh sách tất cả các thư để lấy 150 thư gần nhất (phục vụ đối soát lại hóa đơn cũ chưa khớp)
+      console.log('Đang quét danh sách 150 thư gần nhất...');
       const allMessages = await client.search({ all: true });
-      const recentMessages = allMessages.slice(-30);
+      const recentMessages = allMessages.slice(-150);
 
       // Gộp danh sách, loại bỏ trùng lặp UID và đảo ngược để thư mới nhất được xử lý trước
       const combinedMessages = Array.from(new Set([...unseenMessages, ...recentMessages])).reverse();
-      console.log(`Sẽ tiến hành kiểm tra ${combinedMessages.length} thư (gồm thư chưa đọc gần đây và 30 thư gần nhất).`);
+      console.log(`Sẽ tiến hành kiểm tra ${combinedMessages.length} thư (gồm thư chưa đọc gần đây và 150 thư gần nhất).`);
 
       console.log('Đang tải trước danh sách envelope theo lô (batch)...');
       const envelopes = [];
@@ -253,25 +256,48 @@ export async function fetchInvoiceEmails(config) {
           const htmlContent = parsed.html || '';
           const textContent = parsed.text || '';
 
+          // Kiểm tra xem email có file XML đính kèm trực tiếp không
+          let attachmentXmlPath = null;
+          if (parsed.attachments && parsed.attachments.length > 0) {
+            const xmlAttachment = parsed.attachments.find(att => att.filename && att.filename.toLowerCase().endsWith('.xml'));
+            if (xmlAttachment) {
+              const tempDownloadDir = path.resolve('./server/downloads');
+              if (!fs.existsSync(tempDownloadDir)) {
+                fs.mkdirSync(tempDownloadDir, { recursive: true });
+              }
+              const filename = `attachment_${uid}_${xmlAttachment.filename}`;
+              const finalPath = path.join(tempDownloadDir, filename);
+              fs.writeFileSync(finalPath, xmlAttachment.content);
+              attachmentXmlPath = finalPath;
+              console.log(`  + Phát hiện và trích xuất XML đính kèm trực tiếp từ email: ${xmlAttachment.filename}`);
+            }
+          }
+
           // Trích xuất thông tin tra cứu
           const invoiceInfo = extractInvoiceDetails(htmlContent, textContent);
           
-          if (invoiceInfo.lookupUrl) {
-            console.log(`  + Đã trích xuất: [${invoiceInfo.provider}] Link: ${invoiceInfo.lookupUrl} - Mã: ${invoiceInfo.lookupCode}`);
+          // Chấp nhận xử lý nếu có link tra cứu HOẶC có file XML đính kèm
+          if (invoiceInfo.lookupUrl || attachmentXmlPath) {
+            if (attachmentXmlPath) {
+              console.log(`  + Đã sẵn sàng xử lý hóa đơn qua tệp XML đính kèm.`);
+            } else {
+              console.log(`  + Đã trích xuất: [${invoiceInfo.provider}] Link: ${invoiceInfo.lookupUrl} - Mã: ${invoiceInfo.lookupCode}`);
+            }
             
             invoicesToProcess.push({
               emailUid: uid,
               subject: subject,
               sender: from,
               date: msg.envelope.date,
+              attachmentXmlPath: attachmentXmlPath,
               ...invoiceInfo
             });
 
-            // Đánh dấu thư đã đọc (SEEN) sau khi đã quét thành công thông tin tra cứu
+            // Đánh dấu thư đã đọc (SEEN) sau khi đã quét thành công thông tin tra cứu/đính kèm
             await client.messageFlagsAdd(seq, ['\\Seen']);
             console.log(`  + Đã đánh dấu Đã Đọc cho email Seq: ${seq} (UID: ${uid})`);
           } else {
-            console.log(`  - Không trích xuất được link tra cứu từ email này.`);
+            console.log(`  - Không trích xuất được link tra cứu hay tệp XML đính kèm từ email này.`);
           }
         }
       }
